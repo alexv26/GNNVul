@@ -1,0 +1,14 @@
+{
+    "input_dim": 7,
+    "hidden_dim": 64,
+    "output_dim": 2,
+    "dropout": 0.5,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "epochs": 1,
+    "load_existing_model": false,
+    "save_graphs": true,
+    "model_save_path": "trained_GNN_model_GAT.pth",
+    "visualizations_save_path": "visualizations",
+    "losses_file_path": "training_losses_GAT.json"
+}
