@@ -1,6 +1,5 @@
 import json
 import os
-import argparse
 import networkx as nx
 from .regex_based_graph_generator import RegexBasedGraphGenerator
 

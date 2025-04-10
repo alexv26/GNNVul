@@ -1,10 +1,8 @@
 import os
-from collections import Counter
 from sklearn.metrics import precision_recall_fscore_support
 import torch
 import torch.optim as optim
 from torch_geometric.loader import DataLoader
-from sklearn.metrics import accuracy_score
 from data.GraphDataset import GraphDataset
 from model import GNNModel
 from tqdm import tqdm
@@ -128,13 +126,13 @@ def load_configs():
     return (configs["input_dim"], configs["hidden_dim"], configs["output_dim"], 
             configs["dropout"], configs["batch_size"], configs["learning_rate"], 
             configs["epochs"], configs["load_existing_model"], configs["save_graphs"],
-            configs["model_save_path"], configs["visualizations_save_path"], 
-            configs["losses_file_path"])
+            configs["archutecture_type"], configs["model_save_path"], 
+            configs["visualizations_save_path"], configs["losses_file_path"])
 
 
 if __name__ == "__main__":
     #* STEP 1: LOAD CONFIGS
-    input_dim, hidden_dim, output_dim, dropout, batch_size, learning_rate, epochs, load_existing_model, save_graphs, model_save_path, visualizations_save_path, losses_file_path = load_configs()
+    input_dim, hidden_dim, output_dim, dropout, batch_size, learning_rate, epochs, load_existing_model, save_graphs, architecture_type, model_save_path, visualizations_save_path, losses_file_path = load_configs()
     '''
         load_existing_model: boolean value, decides whether we load saved .pth model or train a new one
         save_graphs: boolean value, decide if we save graphs to computer (for faster runtime), or do not save (for better space efficiency)
@@ -145,15 +143,16 @@ if __name__ == "__main__":
     if not os.path.exists(visualizations_save_path):
         os.mkdir(visualizations_save_path)
     
-    model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model="gat")
+    train_dataset = GraphDataset("train")
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_dataset = GraphDataset("valid")
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+    input_dim = train_dataset[0].x.shape[1]
+    model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     #* STEP 2: TRAIN MODEL
     if not load_existing_model:
-        train_dataset = GraphDataset("train")
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_dataset = GraphDataset("valid")
-        val_loader = DataLoader(val_dataset, batch_size=batch_size)
         # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         pos_weight = torch.tensor(nonvuln / vuln, dtype=torch.float)
