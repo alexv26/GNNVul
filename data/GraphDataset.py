@@ -9,7 +9,7 @@ from .graph_gen.graph_generator import generate_one_graph as gengraph
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "../../data/final_data")
-W2V_PATH = os.path.join(BASE_DIR, "../w2v/word2vec_code.model")
+W2V_PATH = os.path.join(BASE_DIR, "w2v/word2vec_code.model")
 
 def split_name_into_subtokens(name):
     """
@@ -26,9 +26,8 @@ def split_name_into_subtokens(name):
 
 
 class GraphDataset(Dataset):
-    def __init__(self, database_name, save_graphs=True, w2v=W2V_PATH):
-        self.database_name = database_name.lower()
-        self.data = js.load_json_array(os.path.join(DB_DIR, f"all_{database_name.lower()}_data_new.json"))
+    def __init__(self, database_path, save_graphs=True, w2v=W2V_PATH):
+        self.data = js.load_json_array(database_path)
         self.save_graphs = save_graphs
         if not os.path.exists(w2v):
             print("Building new w2v model")
@@ -44,12 +43,21 @@ class GraphDataset(Dataset):
     def get_vuln_nonvuln_split(self):
         vuln = 0
         nonvuln = 0
-        for i in range(self.__len__()):
-            if float(self.data[i]["cvss_score"]) > 0:
-                vuln += 1
+        for entry in self.data:
+            if "cvss_score" in entry:
+                label = float(entry["cvss_score"])
+                if label > 0:
+                    vuln += 1
+                else:
+                    nonvuln += 1
+            elif "target" in entry:
+                label = int(entry["target"])
+                if label == 1:
+                    vuln += 1
+                else:
+                    nonvuln += 1
             else:
-                nonvuln += 1
-
+                raise ValueError("Data entry missing 'cvss_score' or 'target'")
         return vuln, nonvuln
 
     def _build_word2vec_model(self):
@@ -121,11 +129,16 @@ class GraphDataset(Dataset):
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         edge_attr = torch.tensor(edge_attr, dtype=torch.long)
 
+        # LABEL HANDLING: Support both cvss_score (float) and target (already binary)
+        #! NOTE: for now, just binary classification, will use strictly "target"
+        label = torch.tensor(float(self.data[idx]["target"]), dtype=torch.float)
+        '''label_raw = self.data[idx].get("cvss_score", None)
+        if label_raw is not None:
+            score = float(label_raw)
+            label = torch.tensor(0.0 if score == 0.0 else 1.0, dtype=torch.float)
+        else:
+            label = torch.tensor(float(self.data[idx]["target"]), dtype=torch.float)'''
 
-
-        score = float(self.data[idx]["cvss_score"])
-        if score == 0.0: label = torch.tensor(0.0, dtype=torch.float) #! CHANGED FROM long TO float
-        else: label = torch.tensor(1.0, dtype=torch.float) #! CHANGED FROM long TO float
 
         data = Data(x=node_feature_matrix, edge_index=edge_index, edge_attr=edge_attr, y=label)
         return data

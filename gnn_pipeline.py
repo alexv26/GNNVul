@@ -9,9 +9,11 @@ from tqdm import tqdm
 import json
 from data.graph_gen.data_visualization import plot_loss, plot_confusion_matrix, plot_training_history
 from sklearn.metrics import classification_report
+import argparse
+from sklearn.model_selection import train_test_split
 
 # Training loop
-def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, losses_file_path="training_losses.json"):
+def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, losses_file_path="training_losses.json"):
     losses = {'epoch_loss': [], 'batch_loss': []}
     history = {
         "epoch": [],
@@ -34,6 +36,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         # Create a tqdm progress bar for the training batches
         with tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", unit="batch") as batch_progress:
             for data in batch_progress:
+                data = data.to(device) # So i can use either CPU or GPU depending on machine
                 optimizer.zero_grad()  # Zero gradients
                 out = model(data)  # Forward pass
                 
@@ -61,7 +64,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         losses['epoch_loss'].append(epoch_loss)
         losses['batch_loss'].append(batch_losses)
                 # Validation evaluation
-        val_accuracy, val_preds, val_labels = evaluate(model, val_loader)
+        val_accuracy, val_preds, val_labels = evaluate(model, val_loader, device)
         prec, rec, f1, _ = precision_recall_fscore_support(val_labels, val_preds, average="binary", zero_division=0)
         ##! START NEW
         # Log metrics
@@ -99,7 +102,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
 
 # Evaluate the model
 
-def evaluate(model, loader):
+def evaluate(model, loader, device):
     model.eval()
     correct = 0
     total = 0
@@ -108,6 +111,7 @@ def evaluate(model, loader):
     with tqdm(loader, desc=f"Testing model accuracy", unit="batch") as batch_progress:
         with torch.no_grad():
             for data in batch_progress:
+                data = data.to(device) # So i can use either CPU or GPU depending on machine
                 out = model(data)
                 predicted = (torch.sigmoid(out) >= 0.5).long() #! CHANGED _, predicted = torch.max(out, 1)
                 correct += (predicted == data.y).sum().item()
@@ -118,6 +122,49 @@ def evaluate(model, loader):
 
     accuracy = correct / total
     return accuracy, all_preds, all_labels
+
+# ChatGPT Generated
+def stratified_split(data, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42):
+    # Determine which label field is used
+    if "cvss_score" in data[0]:
+        label_key = "cvss_score"
+        get_label = lambda entry: 0 if float(entry[label_key]) == 0.0 else 1
+    elif "target" in data[0]:
+        label_key = "target"
+        get_label = lambda entry: int(entry[label_key])
+    else:
+        raise ValueError("Dataset must contain either 'cvss_score' or 'target' as label field")
+
+    # Group entries by label
+    safe = [entry for entry in data if get_label(entry) == 0]
+    vuln = [entry for entry in data if get_label(entry) == 1]
+
+    # Stratified split within each group
+    def split_group(group):
+        train, temp = train_test_split(group, train_size=train_ratio, random_state=seed)
+        val, test = train_test_split(temp, test_size=test_ratio / (test_ratio + val_ratio), random_state=seed)
+        return train, val, test
+
+    safe_train, safe_val, safe_test = split_group(safe)
+    vuln_train, vuln_val, vuln_test = split_group(vuln)
+
+    # Combine both groups
+    train = safe_train + vuln_train
+    val = safe_val + vuln_val
+    test = safe_test + vuln_test
+
+    return train, val, test
+
+def print_split_stats(split_name, split_data):
+    total = len(split_data)
+    if "cvss_score" in split_data[0]:
+        get_label = lambda entry: 0 if float(entry["cvss_score"]) == 0.0 else 1
+    else:
+        get_label = lambda entry: int(entry["target"])
+
+    vuln = sum(get_label(entry) for entry in split_data)
+    nonvuln = total - vuln
+    print(f"{split_name} — Total: {total}, Vulnerable: {vuln} ({vuln/total:.2%}), Non-vulnerable: {nonvuln} ({nonvuln/total:.2%})")
 
 def load_configs():
     configs_file_path = "configs.json"
@@ -140,33 +187,71 @@ if __name__ == "__main__":
         visualization_save_path: path to where we store graphs
         losses_file_path: path to where we store loss data
     '''
-    if not os.path.exists(visualizations_save_path):
-        os.mkdir(visualizations_save_path)
+
+    #* ARGUMENT PARSING
+    parser = argparse.ArgumentParser(description="Train and evaluate GNN model")
+    parser.add_argument("--train-dataset", type=str, default="data/databases/all_train_data_new.json", help="Name of the training dataset split (default: train)")
+    parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
+    parser.add_argument("--test-dataset", type=str, default="data/databases/all_test_data_new.json", help="Name of the testing dataset split (default: test)")
+    parser.add_argument("--valid-dataset", type=str, default="data/databases/all_valid_data_new.json", help="Name of the testing dataset split (default: test)")    
+    args = parser.parse_args()
+
+    '''
+    The code below basically handles whether you need to do pre-splitting of data or not. If we do, we a pre-split of the data
+    and try to keep it balanced between datasets of vuln/nonvuln.
+    '''
+    if args.do_data_splitting is False:
+        train_dataset = GraphDataset(args.train_dataset)
+        val_dataset = GraphDataset(args.valid_dataset)
+        test_dataset = GraphDataset(args.test_dataset)
     
-    train_dataset = GraphDataset("train")
+    else:    
+        print("🚧 Splitting dataset into train/val/test...")
+        with open(args.train_dataset, 'r') as f:
+            full_data = json.load(f)
+
+        train_data, val_data, test_data = stratified_split(full_data)
+        print_split_stats("Train", train_data)
+        print_split_stats("Validation", val_data)
+        print_split_stats("Test", test_data)
+
+        # Optional: save these splits for reuse
+        os.makedirs("split_datasets", exist_ok=True)
+        with open("split_datasets/train.json", "w") as f:
+            json.dump(train_data, f, indent=2)
+        with open("split_datasets/val.json", "w") as f:
+            json.dump(val_data, f, indent=2)
+        with open("split_datasets/test.json", "w") as f:
+            json.dump(test_data, f, indent=2)
+
+        train_dataset = GraphDataset("split_datasets/train.json")
+        val_dataset = GraphDataset("split_datasets/val.json")
+        test_dataset = GraphDataset("split_datasets/test.json")
+    
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_dataset = GraphDataset("valid")
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
+
     input_dim = train_dataset[0].x.shape[1]
-    model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     #* STEP 2: TRAIN MODEL
     if not load_existing_model:
         # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
+        print(vuln, nonvuln)
         pos_weight = torch.tensor(nonvuln / vuln, dtype=torch.float)
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        criterion = torch.nn.BCEWithLogitsLoss() #pos_weight=pos_weight
 
-        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, losses_file_path="training_losses_GAT.json")    
+        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, losses_file_path="training_losses_GAT.json")    
     else:
         print("Loading existing model")
         model.load_state_dict(torch.load(model_save_path))
 
     #* STEP 3: TEST MODEL
-    test_dataset = GraphDataset("test")
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    test_accuracy, all_preds_test, all_labels_test = evaluate(model, test_loader)
+    test_accuracy, all_preds_test, all_labels_test = evaluate(model, test_loader, device)
     # Test results
     plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=os.path.join(visualizations_save_path, "test_conf_matr.png"))
     print(classification_report(
@@ -178,9 +263,7 @@ if __name__ == "__main__":
     print(f"Test Accuracy: {test_accuracy:.4f}")
 
     #* STEP 4: VALIDATE MODEL
-    validation_dataset = GraphDataset("valid")
-    val_loader = DataLoader(validation_dataset, batch_size=batch_size)
-    val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader)
+    val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader, device)
     # Validation results
     print(f"Valid Accuracy: {val_accuracy:.4f}")
     plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=os.path.join(visualizations_save_path, "val_conf_matr.png"))
@@ -211,3 +294,7 @@ if __name__ == "__main__":
 
     print("Saved predictions and labels to predictions_and_labels.json")
     plot_training_history(history_file_path="training_history.json", save_dir=visualizations_save_path)
+
+
+# CODE TO RUN ON DIVERSEVUL: python gnn_pipeline.py --train-dataset "data/databases/diversevul_file.json" --do-data-splitting True
+# CODE TO RUN ON DEVIGN: python gnn_pipeline.py --train-dataset "data/databases/devign.json" --do-data-splitting True
