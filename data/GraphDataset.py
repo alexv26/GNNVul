@@ -33,6 +33,8 @@ class GraphDataset(Dataset):
         if not os.path.exists(w2v):
             print("Building new w2v model")
             train_w2v(database_path)
+            self.w2v = Word2Vec.load(W2V_PATH)
+            self.embedding_dim = self.w2v.vector_size
         else:
             print("Word2Vec exists. Loading pretrained model...")
             self.w2v = Word2Vec.load(W2V_PATH)
