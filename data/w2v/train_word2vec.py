@@ -1,17 +1,18 @@
 from nltk.tokenize import sent_tokenize, word_tokenize
 import nltk
-import gensim
 from gensim.models import Word2Vec
 import pandas as pd
 import json
 nltk.download('punkt_tab') # as per https://www.nltk.org/install.html
 from multiprocessing import cpu_count
-import swifter  # For automatic parallelization
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 ###* GETTING DATA FROM TRAIN DATASET *###
 
 # assuming you run out of the data directory
-def train_w2v(path="./final_data/all_train_data_new.json"):
+def train_w2v(path="./final_data/all_train_data_new.json", save_path=BASE_DIR):
     data = []
     try:
         with open(path, 'r', encoding='utf-8') as file:
@@ -57,4 +58,4 @@ def train_w2v(path="./final_data/all_train_data_new.json"):
     )
 
     # Save the trained model
-    word2vec_model.save("word2vec_code.model")
+    word2vec_model.save(os.path.join(save_path, "word2vec_code.model"))
