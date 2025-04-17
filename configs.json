@@ -10,6 +10,6 @@
     "save_graphs": true,
     "archutecture_type": "rgcn",
     "model_save_path": "trained_GNN_model_RGCN.pth",
-    "visualizations_save_path": "visualizations/RGCN",
+    "visualizations_save_path": "visualizations/BigVUL",
     "losses_file_path": "training_losses_RGCN.json"
 }

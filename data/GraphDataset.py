@@ -44,20 +44,11 @@ class GraphDataset(Dataset):
         vuln = 0
         nonvuln = 0
         for entry in self.data:
-            if "cvss_score" in entry:
-                label = float(entry["cvss_score"])
-                if label > 0:
-                    vuln += 1
-                else:
-                    nonvuln += 1
-            elif "target" in entry:
-                label = int(entry["target"])
-                if label == 1:
-                    vuln += 1
-                else:
-                    nonvuln += 1
+            label = int(entry["target"])
+            if label == 1:
+                vuln += 1
             else:
-                raise ValueError("Data entry missing 'cvss_score' or 'target'")
+                nonvuln += 1
         return vuln, nonvuln
 
     def _build_word2vec_model(self):

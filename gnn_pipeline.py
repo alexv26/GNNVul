@@ -126,12 +126,12 @@ def evaluate(model, loader, device):
 # ChatGPT Generated
 def stratified_split(data, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42):
     # Determine which label field is used
-    if "cvss_score" in data[0]:
-        label_key = "cvss_score"
-        get_label = lambda entry: 0 if float(entry[label_key]) == 0.0 else 1
-    elif "target" in data[0]:
+    if "target" in data[0]:
         label_key = "target"
         get_label = lambda entry: int(entry[label_key])
+    elif "cvss_score" in data[0] and data[0]["cvss_score"] is not None:
+        label_key = "cvss_score"
+        get_label = lambda entry: 0 if float(entry[label_key]) == 0.0 else 1
     else:
         raise ValueError("Dataset must contain either 'cvss_score' or 'target' as label field")
 
@@ -157,10 +157,7 @@ def stratified_split(data, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, see
 
 def print_split_stats(split_name, split_data):
     total = len(split_data)
-    if "cvss_score" in split_data[0]:
-        get_label = lambda entry: 0 if float(entry["cvss_score"]) == 0.0 else 1
-    else:
-        get_label = lambda entry: int(entry["target"])
+    get_label = lambda entry: int(entry["target"])
 
     vuln = sum(get_label(entry) for entry in split_data)
     nonvuln = total - vuln
@@ -243,7 +240,7 @@ if __name__ == "__main__":
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         print(vuln, nonvuln)
         pos_weight = torch.tensor(nonvuln / vuln, dtype=torch.float)
-        criterion = torch.nn.BCEWithLogitsLoss() #pos_weight=pos_weight
+        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight) #weight to help fix inbalance
 
         train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, losses_file_path="training_losses_GAT.json")    
     else:
