@@ -6,6 +6,7 @@ from gensim.models import Word2Vec
 from .json_functions import JsonFuncs as js
 import re
 from .graph_gen.graph_generator import generate_one_graph as gengraph
+from w2v.train_word2vec import train_w2v
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "../../data/final_data")
@@ -31,7 +32,7 @@ class GraphDataset(Dataset):
         self.save_graphs = save_graphs
         if not os.path.exists(w2v):
             print("Building new w2v model")
-            self._build_word2vec_model()
+            train_w2v(database_path)
         else:
             print("Word2Vec exists. Loading pretrained model...")
             self.w2v = Word2Vec.load(W2V_PATH)
@@ -50,20 +51,6 @@ class GraphDataset(Dataset):
             else:
                 nonvuln += 1
         return vuln, nonvuln
-
-    def _build_word2vec_model(self):
-        # Collect subtokenized names from all graphs
-        all_subtoken_lists = []
-        for i in range(len(self.data)):
-            G = gengraph(self.data, i, save_graphs=self.save_graphs)
-            for node in G.nodes:
-                subtokens = split_name_into_subtokens(str(node))
-                if subtokens:
-                    all_subtoken_lists.append(subtokens)
-
-        # Train Word2Vec
-        self.w2v = Word2Vec(sentences=all_subtoken_lists, vector_size=32, window=5, min_count=1, sg=1)
-        self.embedding_dim = self.w2v.vector_size
     
     def __getitem__(self, idx):
 
