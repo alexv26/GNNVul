@@ -11,6 +11,7 @@ from data.graph_gen.data_visualization import plot_loss, plot_confusion_matrix, 
 from sklearn.metrics import classification_report
 import argparse
 from sklearn.model_selection import train_test_split
+import random
 
 # Training loop
 def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, losses_file_path="training_losses.json"):
@@ -124,36 +125,41 @@ def evaluate(model, loader, device):
     return accuracy, all_preds, all_labels
 
 # ChatGPT Generated
-def stratified_split(data, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42):
-    # Determine which label field is used
-    if "target" in data[0]:
-        label_key = "target"
-        get_label = lambda entry: int(entry[label_key])
-    elif "cvss_score" in data[0] and data[0]["cvss_score"] is not None:
-        label_key = "cvss_score"
-        get_label = lambda entry: 0 if float(entry[label_key]) == 0.0 else 1
-    else:
-        raise ValueError("Dataset must contain either 'cvss_score' or 'target' as label field")
 
-    # Group entries by label
-    safe = [entry for entry in data if get_label(entry) == 0]
-    vuln = [entry for entry in data if get_label(entry) == 1]
+def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3):
+    
+    # Separate vulnerable and safe entries
+    vulnerable = [entry for entry in data if entry[target_key] == 1]
+    safe = [entry for entry in data if entry[target_key] == 0]
 
-    # Stratified split within each group
-    def split_group(group):
-        train, temp = train_test_split(group, train_size=train_ratio, random_state=seed)
-        val, test = train_test_split(temp, test_size=test_ratio / (test_ratio + val_ratio), random_state=seed)
-        return train, val, test
+    print(f"Original: {len(vulnerable)} vulnerable, {len(safe)} safe")
 
-    safe_train, safe_val, safe_test = split_group(safe)
-    vuln_train, vuln_val, vuln_test = split_group(vuln)
+    # Subsample safe entries
+    safe_sample_size = min(len(safe), len(vulnerable) * safe_ratio)
+    safe_sampled = random.sample(safe, safe_sample_size)
 
-    # Combine both groups
-    train = safe_train + vuln_train
-    val = safe_val + vuln_val
-    test = safe_test + vuln_test
+    # Combine and shuffle
+    balanced_data = vulnerable + safe_sampled
+    random.shuffle(balanced_data)
 
-    return train, val, test
+    # Stratified split
+    y = [entry[target_key] for entry in balanced_data]
+    train_val, test = train_test_split(balanced_data, test_size=0.1, stratify=y, random_state=42)
+    y_train_val = [entry[target_key] for entry in train_val]
+    train, valid = train_test_split(train_val, test_size=0.1111, stratify=y_train_val, random_state=42)  # 10% of total
+
+    # Save to JSON files
+    def save(dataset, name):
+        with open(f"{output_dir}/{name}.json", 'w') as f:
+            json.dump(dataset, f, indent=2)
+
+    save(train, "train")
+    save(valid, "valid")
+    save(test, "test")
+
+    print(f"Saved: {len(train)} train, {len(valid)} valid, {len(test)} test")
+
+    return train, valid, test
 
 def print_split_stats(split_name, split_data):
     total = len(split_data)
@@ -206,24 +212,14 @@ if __name__ == "__main__":
         print("🚧 Splitting dataset into train/val/test...")
         with open(args.train_dataset, 'r') as f:
             full_data = json.load(f)
-
-        train_data, val_data, test_data = stratified_split(full_data)
+        train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets")
         print_split_stats("Train", train_data)
         print_split_stats("Validation", val_data)
         print_split_stats("Test", test_data)
 
-        # Optional: save these splits for reuse
-        os.makedirs("split_datasets", exist_ok=True)
-        with open("split_datasets/train.json", "w") as f:
-            json.dump(train_data, f, indent=2)
-        with open("split_datasets/val.json", "w") as f:
-            json.dump(val_data, f, indent=2)
-        with open("split_datasets/test.json", "w") as f:
-            json.dump(test_data, f, indent=2)
-
-        train_dataset = GraphDataset("split_datasets/train.json")
-        val_dataset = GraphDataset("split_datasets/val.json")
-        test_dataset = GraphDataset("split_datasets/test.json")
+        train_dataset = GraphDataset("data/split_datasets/train.json")
+        val_dataset = GraphDataset("data/split_datasets/valid.json")
+        test_dataset = GraphDataset("data/split_datasets/test.json")
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -295,3 +291,4 @@ if __name__ == "__main__":
 
 # CODE TO RUN ON DIVERSEVUL: python gnn_pipeline.py --train-dataset "data/databases/diversevul_file.json" --do-data-splitting True
 # CODE TO RUN ON DEVIGN: python gnn_pipeline.py --train-dataset "data/databases/devign.json" --do-data-splitting True
+# ON COMPLETE DATASET: python gnn_pipeline.py --train-dataset "data/databases/complete_dataset.json" --do-data-splitting True

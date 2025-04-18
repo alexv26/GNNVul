@@ -6,6 +6,7 @@ import json
 nltk.download('punkt_tab') # as per https://www.nltk.org/install.html
 from multiprocessing import cpu_count
 import os
+import swifter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
