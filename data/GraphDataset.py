@@ -6,7 +6,7 @@ from gensim.models import Word2Vec
 from .json_functions import JsonFuncs as js
 import re
 from .graph_gen.graph_generator import generate_one_graph as gengraph
-from w2v.train_word2vec import train_w2v
+from .w2v.train_word2vec import train_w2v
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "../../data/final_data")
