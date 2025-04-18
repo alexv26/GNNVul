@@ -77,6 +77,8 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         history["val_recall"].append(rec)
         history["val_f1"].append(f1)
 
+        print(f"Validation F1: {f1}")
+        print(f"Validation Accuracy: {val_accuracy}")
         # Save best model
         if f1 > best_val_f1:
             best_val_f1 = f1
@@ -121,7 +123,9 @@ def evaluate(model, loader, device):
                 all_labels.extend(data.y.cpu().numpy())
                 tqdm.write(f"Raw model outputs: {out[:5]}")
 
+
     accuracy = correct / total
+    print(f"Evaluation accuracy: {accuracy}")
     return accuracy, all_preds, all_labels
 
 # ChatGPT Generated
@@ -257,12 +261,10 @@ if __name__ == "__main__":
         target_names=["Safe", "Vulnerable"],
         zero_division=0  # suppress warnings for undefined metrics
     ))
-    print(f"Test Accuracy: {test_accuracy:.4f}")
 
     #* STEP 4: VALIDATE MODEL
     val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader, device)
     # Validation results
-    print(f"Valid Accuracy: {val_accuracy:.4f}")
     plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=visualizations_save_path)
     print(classification_report(
         all_labels_val,
