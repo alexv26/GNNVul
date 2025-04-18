@@ -78,7 +78,6 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         history["val_f1"].append(f1)
 
         print(f"Validation F1: {f1}")
-        print(f"Validation Accuracy: {val_accuracy}")
         # Save best model
         if f1 > best_val_f1:
             best_val_f1 = f1
