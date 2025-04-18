@@ -127,6 +127,10 @@ def evaluate(model, loader, device):
 # ChatGPT Generated
 
 def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3):
+
+    # Make output dir if not exists
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
     
     # Separate vulnerable and safe entries
     vulnerable = [entry for entry in data if entry[target_key] == 1]
