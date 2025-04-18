@@ -250,7 +250,7 @@ if __name__ == "__main__":
     #* STEP 3: TEST MODEL
     test_accuracy, all_preds_test, all_labels_test = evaluate(model, test_loader, device)
     # Test results
-    plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=os.path.join(visualizations_save_path, "test_conf_matr.png"))
+    plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=visualizations_save_path)
     print(classification_report(
         all_labels_test,
         all_preds_test,
