@@ -34,6 +34,10 @@ def plot_confusion_matrix(y_true, y_pred, dataset_name="Test", save_path="conf_m
 import matplotlib.pyplot as plt
 
 def plot_training_history(history_file_path="training_history.json", save_dir="visualizations"):
+    
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+    
     with open(history_file_path, "r") as f:
         history = json.load(f)
 
