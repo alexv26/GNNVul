@@ -263,7 +263,7 @@ if __name__ == "__main__":
     val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader, device)
     # Validation results
     print(f"Valid Accuracy: {val_accuracy:.4f}")
-    plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=os.path.join(visualizations_save_path, "val_conf_matr.png"))
+    plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=visualizations_save_path)
     print(classification_report(
         all_labels_val,
         all_preds_val,

@@ -19,7 +19,10 @@ def plot_loss(losses, path="loss_curve.png"):
     print(f"Saved loss curve to {path}")
 
 
-def plot_confusion_matrix(y_true, y_pred, dataset_name="Test", save_path="conf_matrix.png"):
+def plot_confusion_matrix(y_true, y_pred, dataset_name, save_path="visualizations"):
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    
     cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(6, 5))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Safe", "Vulnerable"], yticklabels=["Safe", "Vulnerable"])
@@ -27,7 +30,7 @@ def plot_confusion_matrix(y_true, y_pred, dataset_name="Test", save_path="conf_m
     plt.xlabel("Predicted")
     plt.ylabel("Actual")
     plt.tight_layout()
-    plt.savefig(save_path)
+    plt.savefig(os.path.join(save_path, f"{dataset_name}_conf_matrix.png"))
     plt.close()
     print(f"Saved {dataset_name.lower()} confusion matrix to {save_path}")
 
