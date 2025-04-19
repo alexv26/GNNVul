@@ -12,7 +12,7 @@ from sklearn.metrics import classification_report
 import argparse
 from sklearn.model_selection import train_test_split
 import random
-from .data.w2v.train_word2vec import train_w2v
+from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
