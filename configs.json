@@ -5,11 +5,11 @@
     "dropout": 0.5,
     "batch_size": 32,
     "learning_rate": 0.001,
-    "epochs": 50,
+    "epochs": 2,
     "load_existing_model": false,
     "save_graphs": true,
     "archutecture_type": "rgcn",
     "model_save_path": "trained_GNN_model_RGCN.pth",
-    "visualizations_save_path": "visualizations/BigVUL",
+    "visualizations_save_path": "visualizations/BigVul",
     "losses_file_path": "training_losses_RGCN.json"
 }
