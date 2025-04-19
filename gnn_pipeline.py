@@ -278,7 +278,7 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
-    input_dim = train_dataset[0].x.shape[1]
+    if architecture_type == "rgcn": input_dim = train_dataset[0].x.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_reg)
