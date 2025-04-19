@@ -12,6 +12,11 @@ from sklearn.metrics import classification_report
 import argparse
 from sklearn.model_selection import train_test_split
 import random
+from .data.w2v.train_word2vec import train_w2v
+from gensim.models import Word2Vec
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
 
 # Training loop
 def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, losses_file_path="training_losses.json"):
@@ -228,23 +233,33 @@ if __name__ == "__main__":
 
     #* ARGUMENT PARSING
     parser = argparse.ArgumentParser(description="Train and evaluate GNN model")
-    parser.add_argument("--train-dataset", type=str, default="data/databases/all_train_data_new.json", help="Name of the training dataset split (default: train)")
-    parser.add_argument("--test-dataset", type=str, default="data/databases/all_test_data_new.json", help="Name of the testing dataset split (default: test)")
-    parser.add_argument("--valid-dataset", type=str, default="data/databases/all_valid_data_new.json", help="Name of the testing dataset split (default: test)")    
+    parser.add_argument("--in-dataset", type=str, default="data/databases/complete_dataset.json", help="Path to the complete dataset (default: complete_dataset.json)")
+    parser.add_argument("--train-dataset", type=str, default="data/split_datasets/train.json", help="Path to the training dataset split (default: train.json)")
+    parser.add_argument("--test-dataset", type=str, default="data/split_datasets/test.json", help="Name of the testing dataset split (default: test.json)")
+    parser.add_argument("--valid-dataset", type=str, default="data/split_datasets/valid.json", help="Name of the validation dataset split (default: test.json)")    
     parser.add_argument("--upsample-vulnerable", type=str, default=False, help="Upsample vulnerable entries (default: False)")
     parser.add_argument("--downsample-safe", type=str, default=False, help="Downsample safe entries (default: False)")
     parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
 
     args = parser.parse_args()
 
+    # LOAD or CREATE w2v
+    if not os.path.exists(W2V_PATH):
+        print("Building new w2v model")
+        train_w2v(args.in_dataset)
+        w2v = Word2Vec.load(W2V_PATH)
+    else:
+        print("Word2Vec exists. Loading pretrained model...")
+        w2v = Word2Vec.load(W2V_PATH)
+
     '''
     The code below basically handles whether you need to do pre-splitting of data or not. If we do, we a pre-split of the data
     and try to keep it balanced between datasets of vuln/nonvuln.
     '''
     if args.do_data_splitting is False:
-        train_dataset = GraphDataset(args.train_dataset)
-        val_dataset = GraphDataset(args.valid_dataset)
-        test_dataset = GraphDataset(args.test_dataset)
+        train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
+        val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
+        test_dataset = GraphDataset(args.test_dataset, w2v, save_graphs)
     
     else:    
         print("🚧 Splitting dataset into train/val/test...")
@@ -255,9 +270,9 @@ if __name__ == "__main__":
         print_split_stats("Validation", val_data)
         print_split_stats("Test", test_data)
 
-        train_dataset = GraphDataset("data/split_datasets/train.json")
-        val_dataset = GraphDataset("data/split_datasets/valid.json")
-        test_dataset = GraphDataset("data/split_datasets/test.json")
+        train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
+        val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
+        test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)

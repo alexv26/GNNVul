@@ -6,7 +6,6 @@ from gensim.models import Word2Vec
 from .json_functions import JsonFuncs as js
 import re
 from .graph_gen.graph_generator import generate_one_graph as gengraph
-from .w2v.train_word2vec import train_w2v
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "../../data/final_data")
@@ -27,18 +26,11 @@ def split_name_into_subtokens(name):
 
 
 class GraphDataset(Dataset):
-    def __init__(self, database_path, save_graphs=True, w2v=W2V_PATH):
+    def __init__(self, database_path, w2v, save_graphs=True):
         self.data = js.load_json_array(database_path)
         self.save_graphs = save_graphs
-        if not os.path.exists(w2v):
-            print("Building new w2v model")
-            train_w2v(database_path)
-            self.w2v = Word2Vec.load(W2V_PATH)
-            self.embedding_dim = self.w2v.vector_size
-        else:
-            print("Word2Vec exists. Loading pretrained model...")
-            self.w2v = Word2Vec.load(W2V_PATH)
-            self.embedding_dim = self.w2v.vector_size
+        self.w2v = w2v
+        self.embedding_dim = self.w2v.vector_size
 
     def __len__(self):
         return len(self.data)
