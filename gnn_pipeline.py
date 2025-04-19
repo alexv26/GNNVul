@@ -129,7 +129,23 @@ def evaluate(model, loader, device):
 
 # ChatGPT Generated
 
-def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3):
+import os
+import random
+import json
+from sklearn.model_selection import train_test_split
+
+def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, upsample_vulnerable=False, downsample_safe=False):
+    """
+    Function to subsample and split data into training, validation, and test sets.
+    
+    Parameters:
+        data (list): The dataset.
+        output_dir (str): Directory to save the output.
+        target_key (str): Key for the target variable.
+        safe_ratio (int): The ratio of safe to vulnerable entries (for safe downsampling).
+        upsample_vulnerable (bool): Whether to upsample vulnerable entries.
+        downsample_safe (bool): Whether to downsample safe entries.
+    """
 
     # Make output dir if not exists
     if not os.path.exists(output_dir):
@@ -141,12 +157,24 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3):
 
     print(f"Original: {len(vulnerable)} vulnerable, {len(safe)} safe")
 
-    # Subsample safe entries
-    safe_sample_size = min(len(safe), len(vulnerable) * safe_ratio)
-    safe_sampled = random.sample(safe, safe_sample_size)
+    # Adjust vulnerable entries (upsample if needed)
+    if upsample_vulnerable:
+        vulnerable_sample_size = max(len(safe) // safe_ratio, len(vulnerable))  # Ensure at least the number of vulnerable entries
+        vulnerable_sampled = vulnerable * (vulnerable_sample_size // len(vulnerable))  # Repeat until size is reached
+        # If not an exact multiple, append extra samples
+        vulnerable_sampled.extend(random.sample(vulnerable, vulnerable_sample_size % len(vulnerable)))
+    else:
+        vulnerable_sampled = vulnerable
+
+    # Adjust safe entries (downsample if needed)
+    if downsample_safe:
+        safe_sample_size = min(len(safe), len(vulnerable_sampled) * safe_ratio)  # Match desired ratio
+        safe_sampled = random.sample(safe, safe_sample_size)
+    else:
+        safe_sampled = safe
 
     # Combine and shuffle
-    balanced_data = vulnerable + safe_sampled
+    balanced_data = vulnerable_sampled + safe_sampled
     random.shuffle(balanced_data)
 
     # Stratified split
@@ -181,7 +209,7 @@ def load_configs():
     with open(configs_file_path, 'r') as file:
         configs: dict = json.load(file)
     return (configs["input_dim"], configs["hidden_dim"], configs["output_dim"], 
-            configs["dropout"], configs["batch_size"], configs["learning_rate"], 
+            configs["dropout"], configs["l2_reg"], configs["batch_size"], configs["learning_rate"], 
             configs["epochs"], configs["load_existing_model"], configs["save_graphs"],
             configs["archutecture_type"], configs["model_save_path"], 
             configs["visualizations_save_path"], configs["losses_file_path"])
@@ -189,7 +217,7 @@ def load_configs():
 
 if __name__ == "__main__":
     #* STEP 1: LOAD CONFIGS
-    input_dim, hidden_dim, output_dim, dropout, batch_size, learning_rate, epochs, load_existing_model, save_graphs, architecture_type, model_save_path, visualizations_save_path, losses_file_path = load_configs()
+    input_dim, hidden_dim, output_dim, dropout, l2_reg, batch_size, learning_rate, epochs, load_existing_model, save_graphs, architecture_type, model_save_path, visualizations_save_path, losses_file_path = load_configs()
     '''
         load_existing_model: boolean value, decides whether we load saved .pth model or train a new one
         save_graphs: boolean value, decide if we save graphs to computer (for faster runtime), or do not save (for better space efficiency)
@@ -201,9 +229,12 @@ if __name__ == "__main__":
     #* ARGUMENT PARSING
     parser = argparse.ArgumentParser(description="Train and evaluate GNN model")
     parser.add_argument("--train-dataset", type=str, default="data/databases/all_train_data_new.json", help="Name of the training dataset split (default: train)")
-    parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
     parser.add_argument("--test-dataset", type=str, default="data/databases/all_test_data_new.json", help="Name of the testing dataset split (default: test)")
     parser.add_argument("--valid-dataset", type=str, default="data/databases/all_valid_data_new.json", help="Name of the testing dataset split (default: test)")    
+    parser.add_argument("--upsample-vulnerable", type=str, default=False, help="Upsample vulnerable entries (default: False)")
+    parser.add_argument("--downsample-safe", type=str, default=False, help="Downsample safe entries (default: False)")
+    parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
+
     args = parser.parse_args()
 
     '''
@@ -219,7 +250,7 @@ if __name__ == "__main__":
         print("🚧 Splitting dataset into train/val/test...")
         with open(args.train_dataset, 'r') as f:
             full_data = json.load(f)
-        train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets")
+        train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe)
         print_split_stats("Train", train_data)
         print_split_stats("Validation", val_data)
         print_split_stats("Test", test_data)
@@ -235,7 +266,7 @@ if __name__ == "__main__":
     input_dim = train_dataset[0].x.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_reg)
 
     #* STEP 2: TRAIN MODEL
     if not load_existing_model:
