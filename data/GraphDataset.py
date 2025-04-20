@@ -46,6 +46,9 @@ class GraphDataset(Dataset):
                 nonvuln += 1
         return vuln, nonvuln
     
+    def get_data(self):
+        return self.data
+    
     def __getitem__(self, idx):
 
         #* STEP 1: CREATE GRAPH

@@ -295,10 +295,10 @@ if __name__ == "__main__":
         val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
         test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
     
-    print_split_stats("Train", train_data)
-    print_split_stats("Validation", val_data)
-    print_split_stats("Test", test_data)
-    
+    print_split_stats("Train", train_dataset.get_data())
+    print_split_stats("Validation", val_dataset.get_data())
+    print_split_stats("Test", test_dataset.get_data())
+
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
