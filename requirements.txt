@@ -1,12 +1,20 @@
+# Core ML & GNN
 torch>=2.0.0
 torch-geometric>=2.3.0
 scikit-learn>=1.1.0
-matplotlib>=3.5.0
-tqdm>=4.64.0
-networkx>=2.6.0
-numpy>=1.21.0
-seaborn>=0.11.0
-gensim>=4.0.0
-nltk>=3.6.0
-swifter>=1.0.9
+
+# NLP and Transformers
+transformers>=4.28.0
+nltk>=3.7
+gensim>=4.2.0  # still included in case Word2Vec is used elsewhere
+swifter>=1.3.0
+
+# Data processing and utilities
 pandas>=1.3.0
+numpy>=1.21.0
+tqdm>=4.64.0
+
+# Graph and visualization
+networkx>=2.6.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
