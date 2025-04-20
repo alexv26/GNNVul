@@ -15,6 +15,7 @@ def precompute_codebert_embeddings(data_path: str, output_path: str = "data/code
         save_graphs (bool): Whether to save the generated graphs.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Precomputing embeddings on the device: {device}")
     tokenizer = RobertaTokenizer.from_pretrained("microsoft/codebert-base")
     model = RobertaModel.from_pretrained("microsoft/codebert-base").to(device).eval()
 
