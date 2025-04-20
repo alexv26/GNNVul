@@ -19,7 +19,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
 
 # Training loop
-def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, losses_file_path="training_losses.json"):
+def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, scheduler=None, losses_file_path="training_losses.json"):
     losses = {'epoch_loss': [], 'batch_loss': []}
     history = {
         "epoch": [],
@@ -70,7 +70,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         losses['epoch_loss'].append(epoch_loss)
         losses['batch_loss'].append(batch_losses)
                 # Validation evaluation
-        val_accuracy, val_preds, val_labels = evaluate(model, val_loader, device)
+        val_accuracy, val_loss, val_preds, val_labels = evaluate(model, val_loader, criterion, device)
         prec, rec, f1, _ = precision_recall_fscore_support(val_labels, val_preds, average="binary", zero_division=0)
         ##! START NEW
         # Log metrics
@@ -88,6 +88,10 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
             best_val_f1 = f1
             torch.save(model.state_dict(), model_save_path)
             print(f"✅ New best model saved at epoch {epoch+1} (Val F1: {f1:.4f})")
+
+            if scheduler:
+                # Pass validation loss to the scheduler
+                scheduler.step(val_loss=val_loss)
 
     # Save final loss and metrics
     with open(losses_file_path, 'w') as f:
@@ -109,30 +113,48 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
 
 # Evaluate the model
 
-def evaluate(model, loader, device):
-    model.eval()
+def evaluate(model, loader, criterion, device):
+    model.eval()  # Set model to evaluation mode
     correct = 0
     total = 0
+    running_loss = 0.0  # To accumulate loss
     all_preds = []
     all_labels = []
+    
     with tqdm(loader, desc=f"Testing model accuracy", unit="batch") as batch_progress:
         with torch.no_grad():
             for data in batch_progress:
-                data = data.to(device) # So i can use either CPU or GPU depending on machine
+                data = data.to(device)  # So I can use either CPU or GPU depending on machine
                 out = model(data)
-                predicted = (torch.sigmoid(out) >= 0.5).long() #! CHANGED _, predicted = torch.max(out, 1)
+                
+                # Calculate loss
+                loss = criterion(out, data.y)
+                running_loss += loss.item()
+                
+                # Get predictions
+                predicted = (torch.sigmoid(out) >= 0.5).long()  # For binary classification (Safe vs Vulnerable)
                 correct += (predicted == data.y).sum().item()
                 total += data.y.size(0)
+                
                 all_preds.extend(predicted.cpu().numpy())
                 all_labels.extend(data.y.cpu().numpy())
+                
                 tqdm.write(f"Raw model outputs: {out[:5]}")
 
-
+    # Calculate accuracy and average loss
     accuracy = correct / total
-    print(f"Evaluation accuracy: {accuracy}")
-    return accuracy, all_preds, all_labels
+    avg_loss = running_loss / len(loader)  # Average loss per batch
+    print(f"Evaluation accuracy: {accuracy}, Average loss: {avg_loss:.4f}")
+    
+    return accuracy, avg_loss, all_preds, all_labels
+
 
 # ChatGPT Generated
+
+import os
+import random
+import json
+from sklearn.model_selection import train_test_split
 
 import os
 import random
@@ -178,13 +200,13 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
     else:
         safe_sampled = safe
 
-    # Combine and shuffle
-    balanced_data = vulnerable_sampled + safe_sampled
-    random.shuffle(balanced_data)
+    # Separate the data into training, validation, and test sets before combining
+    combined_data = vulnerable_sampled + safe_sampled
+    random.shuffle(combined_data)  # Shuffle combined data to ensure randomness
 
     # Stratified split
-    y = [entry[target_key] for entry in balanced_data]
-    train_val, test = train_test_split(balanced_data, test_size=0.1, stratify=y, random_state=42)
+    y = [entry[target_key] for entry in combined_data]
+    train_val, test = train_test_split(combined_data, test_size=0.1, stratify=y, random_state=42)
     y_train_val = [entry[target_key] for entry in train_val]
     train, valid = train_test_split(train_val, test_size=0.1111, stratify=y_train_val, random_state=42)  # 10% of total
 
@@ -200,6 +222,7 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
     print(f"Saved: {len(train)} train, {len(valid)} valid, {len(test)} test")
 
     return train, valid, test
+
 
 def print_split_stats(split_name, split_data):
     total = len(split_data)
@@ -240,6 +263,7 @@ if __name__ == "__main__":
     parser.add_argument("--upsample-vulnerable", type=str, default=False, help="Upsample vulnerable entries (default: False)")
     parser.add_argument("--downsample-safe", type=str, default=False, help="Downsample safe entries (default: False)")
     parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
+    parser.add_argument("--do-lr-scheduling", type=bool, default=True, help="Adjust learning rate after validation loss plateaus (default: True)")
 
     args = parser.parse_args()
 
@@ -263,7 +287,7 @@ if __name__ == "__main__":
     
     else:    
         print("🚧 Splitting dataset into train/val/test...")
-        with open(args.train_dataset, 'r') as f:
+        with open(args.in_dataset, 'r') as f:
             full_data = json.load(f)
         train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe)
         print_split_stats("Train", train_data)
@@ -282,13 +306,17 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_reg)
+    if args.do_lr_scheduling:
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)
+    else:
+        scheduler = None
 
     #* STEP 2: TRAIN MODEL
     if not load_existing_model:
         # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         print(vuln, nonvuln)
-        pos_weight = torch.tensor(nonvuln / vuln, dtype=torch.float)
+        pos_weight = torch.tensor([nonvuln / vuln], dtype=torch.float)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight) #weight to help fix inbalance
 
         train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, losses_file_path="training_losses_GAT.json")    
@@ -297,7 +325,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(model_save_path))
 
     #* STEP 3: TEST MODEL
-    test_accuracy, all_preds_test, all_labels_test = evaluate(model, test_loader, device)
+    test_accuracy, all_preds_test, all_labels_test = evaluate(model, test_loader, criterion, device)
     # Test results
     plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=visualizations_save_path)
     print(classification_report(
@@ -308,7 +336,7 @@ if __name__ == "__main__":
     ))
 
     #* STEP 4: VALIDATE MODEL
-    val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader, device)
+    val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader, criterion, device)
     # Validation results
     plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=visualizations_save_path)
     print(classification_report(
