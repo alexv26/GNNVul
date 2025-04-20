@@ -290,13 +290,14 @@ if __name__ == "__main__":
         with open(args.in_dataset, 'r') as f:
             full_data = json.load(f)
         train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe)
-        print_split_stats("Train", train_data)
-        print_split_stats("Validation", val_data)
-        print_split_stats("Test", test_data)
 
         train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
         val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
         test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
+    
+    print_split_stats("Train", train_data)
+    print_split_stats("Validation", val_data)
+    print_split_stats("Test", test_data)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
