@@ -307,6 +307,7 @@ if __name__ == "__main__":
     model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_reg)
     if args.do_lr_scheduling:
+        print("The model will adjust learning rate when validation loss plateau's.")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)
     else:
         scheduler = None
