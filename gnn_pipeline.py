@@ -12,7 +12,7 @@ from sklearn.metrics import classification_report
 import argparse
 from sklearn.model_selection import train_test_split
 import random
-from data.w2v.train_word2vec import train_w2v
+from data.codebert.precompute_cb_embeddings import precompute_codebert_embeddings
 from gensim.models import Word2Vec
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -267,23 +267,20 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # LOAD or CREATE w2v
-    if not os.path.exists(W2V_PATH):
-        print("Building new w2v model")
-        train_w2v(args.in_dataset)
-        w2v = Word2Vec.load(W2V_PATH)
-    else:
-        print("Word2Vec exists. Loading pretrained model...")
-        w2v = Word2Vec.load(W2V_PATH)
+    # Train CodeBERT
+    if not os.path.exists("data/codebert/codebert_node_embeddings.pt"):
+        print("Precomputing codebert embeddings...")
+        precompute_codebert_embeddings(args.in_dataset, "data/codebert/codebert_node_embeddings.pt", save_graphs)
+
 
     '''
     The code below basically handles whether you need to do pre-splitting of data or not. If we do, we a pre-split of the data
     and try to keep it balanced between datasets of vuln/nonvuln.
     '''
     if args.do_data_splitting is False:
-        train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
-        val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
-        test_dataset = GraphDataset(args.test_dataset, w2v, save_graphs)
+        train_dataset = GraphDataset(args.train_dataset, save_graphs)
+        val_dataset = GraphDataset(args.valid_dataset, save_graphs)
+        test_dataset = GraphDataset(args.test_dataset, save_graphs)
     
     else:    
         print("🚧 Splitting dataset into train/val/test...")
@@ -291,9 +288,9 @@ if __name__ == "__main__":
             full_data = json.load(f)
         train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe)
 
-        train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
-        val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
-        test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
+        train_dataset = GraphDataset("data/split_datasets/train.json", save_graphs)
+        val_dataset = GraphDataset("data/split_datasets/valid.json", save_graphs)
+        test_dataset = GraphDataset("data/split_datasets/test.json", save_graphs)
     
     print_split_stats("Train", train_dataset.get_data())
     print_split_stats("Validation", val_dataset.get_data())

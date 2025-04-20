@@ -6,10 +6,12 @@ from gensim.models import Word2Vec
 from .json_functions import JsonFuncs as js
 import re
 from .graph_gen.graph_generator import generate_one_graph as gengraph
+from transformers import RobertaTokenizer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "../../data/final_data")
 W2V_PATH = os.path.join(BASE_DIR, "w2v/word2vec_code.model")
+CB_PATH = os.path.join(BASE_DIR, "codebert/codebert_node_embeddings.pt")
 
 def split_name_into_subtokens(name):
     """
@@ -26,11 +28,11 @@ def split_name_into_subtokens(name):
 
 
 class GraphDataset(Dataset):
-    def __init__(self, database_path, w2v, save_graphs=True):
+    def __init__(self, database_path, save_graphs=True):
         self.data = js.load_json_array(database_path)
         self.save_graphs = save_graphs
-        self.w2v = w2v
-        self.embedding_dim = self.w2v.vector_size
+        self.embedding_dict = torch.load("codebert_node_embeddings.pt")
+        self.embedding_dim = 768  # You may adjust this if needed
 
     def __len__(self):
         return len(self.data)
@@ -67,16 +69,13 @@ class GraphDataset(Dataset):
             node_type = attrs.get('type', 'unknown')
             if node_type in node_types:
                 node_feature_matrix[index, node_types[node_type]] = 1.0
+            
+            # Using pre-computed embeddings
+            embedding = self.embedding_dict.get(str(node), torch.zeros(self.embedding_dim))
+            node_feature_matrix[index, len(node_types):] = embedding
 
-            # Word2Vec embedding of node name subtokens
-            subtokens = split_name_into_subtokens(str(node))
-            embeddings = []
-            for token in subtokens:
-                if token in self.w2v.wv:
-                    embeddings.append(torch.tensor(self.w2v.wv[token]))
-            if embeddings:
-                mean_embedding = torch.mean(torch.stack(embeddings), dim=0)
-                node_feature_matrix[index, len(node_types):] = mean_embedding
+            node_feature_matrix[index, len(node_types):] = embedding
+
 
         
         # b: edge index and edge type
