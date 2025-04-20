@@ -318,7 +318,7 @@ if __name__ == "__main__":
         # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         print(vuln, nonvuln)
-        pos_weight = torch.tensor([nonvuln / vuln], dtype=torch.float)
+        pos_weight = torch.tensor([nonvuln / vuln], dtype=torch.float).to(device)
         criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight) #weight to help fix inbalance
 
         train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, losses_file_path="training_losses_GAT.json")    
