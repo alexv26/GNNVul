@@ -324,7 +324,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(model_save_path))
 
     #* STEP 3: TEST MODEL
-    test_accuracy, all_preds_test, all_labels_test = evaluate(model, test_loader, criterion, device)
+    test_accuracy, test_loss, all_preds_test, all_labels_test = evaluate(model, test_loader, criterion, device)
     # Test results
     plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=visualizations_save_path)
     print(classification_report(
@@ -335,7 +335,7 @@ if __name__ == "__main__":
     ))
 
     #* STEP 4: VALIDATE MODEL
-    val_accuracy, all_preds_val, all_labels_val = evaluate(model, val_loader, criterion, device)
+    val_accuracy, val_loss, all_preds_val, all_labels_val = evaluate(model, val_loader, criterion, device)
     # Validation results
     plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=visualizations_save_path)
     print(classification_report(
