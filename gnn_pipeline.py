@@ -79,8 +79,6 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
             val_accuracy, val_loss, val_preds, val_labels, val_probs = evaluate(model, val_loader, criterion, device, roc_implementation)
 
             # ROC thresholding
-            from sklearn.metrics import roc_curve
-            import numpy as np
 
             fpr, tpr, thresholds = roc_curve(val_labels, val_probs)
             plot_roc_curve(val_labels, val_probs, dataset_name=f"Val_Epoch{epoch+1}", save_path="visualizations/roc_val") #! Change save_path
@@ -91,11 +89,11 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
             adjusted_val_preds = (np.array(val_probs) >= best_thresh).astype(int)
 
             # Metrics with thresholded predictions
-            from sklearn.metrics import precision_recall_fscore_support
             prec, rec, f1, _ = precision_recall_fscore_support(val_labels, adjusted_val_preds, average="binary", zero_division=0)
 
             # Optionally: print it
             print(f"📈 Epoch {epoch+1}: Val F1 (thresholded @ {best_thresh:.3f}) = {f1:.4f}")
+            print(f"Validation accuracy: {val_accuracy}")
 
         ##! START NEW
         # Log metrics
@@ -107,7 +105,6 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         history["val_recall"].append(rec)
         history["val_f1"].append(f1)
 
-        print(f"Validation F1: {f1}")
         # Save best model
         if f1 > best_val_f1:
             best_val_f1 = f1
