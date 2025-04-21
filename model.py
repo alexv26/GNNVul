@@ -26,7 +26,7 @@ class GNNModel(nn.Module):
             hidden_dim = hidden_dim * 8  # GAT concatenates heads by default
             self.conv2 = GATConv(hidden_dim, hidden_dim, heads=1, dropout=dropout)
         # Output layer
-        self.lin = nn.Linear(hidden_dim, 1) #! CHANGED self.lin = nn.Linear(hidden_dim, output_dim)
+        self.lin = nn.Linear(hidden_dim, 2) #! CHANGED self.lin = nn.Linear(hidden_dim, output_dim)
         self.dropout = dropout
         self.model = model.lower()
 
@@ -61,4 +61,4 @@ class GNNModel(nn.Module):
             x = global_mean_pool(x, batch)
             x = self.lin(x)
         
-        return x.view(-1)  # [batch_size] shaped output #! CHANGED return x
+        return x # Shape: [batch_size, 2]
