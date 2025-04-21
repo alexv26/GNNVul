@@ -6,10 +6,11 @@
     "l2_reg": 1e-7,
     "batch_size": 32,
     "learning_rate": 0.01,
-    "epochs": 50,
+    "epochs": 2,
     "load_existing_model": false,
     "save_graphs": true,
     "archutecture_type": "rgcn",
+    "roc_implementation": true,
     "model_save_path": "trained_GNN_model_RGCN.pth",
     "visualizations_save_path": "visualizations/reduced_l2_and_dropout",
     "losses_file_path": "training_losses_RGCN.json"

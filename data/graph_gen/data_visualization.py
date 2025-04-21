@@ -3,6 +3,28 @@ from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
 import json
 import os
+from sklearn.metrics import roc_curve, auc
+# ChatGPT
+def plot_roc_curve(y_true, y_scores, dataset_name="ROC", save_path="visualizations"):
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    roc_auc = auc(fpr, tpr)
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f"AUC = {roc_auc:.4f}")
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"{dataset_name} ROC Curve")
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_path, f"{dataset_name}_roc_curve.png"))
+    plt.close()
+    print(f"Saved {dataset_name} ROC curve to {save_path}")
+
 
 def plot_loss(losses, path="loss_curve.png"):
     epoch_losses = losses.get("epoch_loss", [])

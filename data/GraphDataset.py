@@ -106,7 +106,7 @@ class GraphDataset(Dataset):
 
         # LABEL HANDLING: Support both cvss_score (float) and target (already binary)
         #! NOTE: for now, just binary classification, will use strictly "target"
-        label = torch.tensor(float(self.data[idx]["target"]), dtype=torch.float)
+        label = torch.tensor(int(self.data[idx]["target"]), dtype=torch.long)
         '''label_raw = self.data[idx].get("cvss_score", None)
         if label_raw is not None:
             score = float(label_raw)

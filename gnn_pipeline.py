@@ -7,19 +7,20 @@ from data.GraphDataset import GraphDataset
 from model import GNNModel
 from tqdm import tqdm
 import json
-from data.graph_gen.data_visualization import plot_loss, plot_confusion_matrix, plot_training_history
-from sklearn.metrics import classification_report
+from data.graph_gen.data_visualization import plot_loss, plot_confusion_matrix, plot_training_history, plot_roc_curve
+from sklearn.metrics import classification_report, roc_curve
 import argparse
 from sklearn.model_selection import train_test_split
 import random
 from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
+import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
 
 # Training loop
-def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, scheduler=None, losses_file_path="training_losses.json"):
+def train(model, train_loader, val_loader, optimizer, model_save_path, criterion, device, scheduler=None, roc_implementation = True, losses_file_path="training_losses.json"):
     losses = {'epoch_loss': [], 'batch_loss': []}
     history = {
         "epoch": [],
@@ -55,7 +56,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
                 batch_losses.append(loss.item())
 
                 # Get predictions
-                predicted = (torch.sigmoid(out) >= 0.5).long() #! CHANGED _, predicted = torch.max(out, 1)
+                _, predicted = torch.max(out, 1)
                 correct += (predicted == data.y).sum().item()
                 total += data.y.size(0)
                 
@@ -69,9 +70,33 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         # STORE LOSSES
         losses['epoch_loss'].append(epoch_loss)
         losses['batch_loss'].append(batch_losses)
-                # Validation evaluation
-        val_accuracy, val_loss, val_preds, val_labels = evaluate(model, val_loader, criterion, device)
-        prec, rec, f1, _ = precision_recall_fscore_support(val_labels, val_preds, average="binary", zero_division=0)
+        # Validation evaluation
+        if not roc_implementation:
+            val_accuracy, val_loss, val_preds, val_labels = evaluate(model, val_loader, criterion, device)
+            prec, rec, f1, _ = precision_recall_fscore_support(val_labels, val_preds, average="binary", zero_division=0)
+        else:
+            # Validation evaluation with ROC analysis
+            val_accuracy, val_loss, val_preds, val_labels, val_probs = evaluate(model, val_loader, criterion, device, roc_implementation)
+
+            # ROC thresholding
+            from sklearn.metrics import roc_curve
+            import numpy as np
+
+            fpr, tpr, thresholds = roc_curve(val_labels, val_probs)
+            plot_roc_curve(val_labels, val_probs, dataset_name=f"Val_Epoch{epoch+1}", save_path="visualizations/roc_val") #! Change save_path
+            youden_index = tpr - fpr
+            best_thresh = thresholds[np.argmax(youden_index)]
+
+            # Apply adjusted threshold
+            adjusted_val_preds = (np.array(val_probs) >= best_thresh).astype(int)
+
+            # Metrics with thresholded predictions
+            from sklearn.metrics import precision_recall_fscore_support
+            prec, rec, f1, _ = precision_recall_fscore_support(val_labels, adjusted_val_preds, average="binary", zero_division=0)
+
+            # Optionally: print it
+            print(f"📈 Epoch {epoch+1}: Val F1 (thresholded @ {best_thresh:.3f}) = {f1:.4f}")
+
         ##! START NEW
         # Log metrics
         history["epoch"].append(epoch + 1)
@@ -113,54 +138,43 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
 
 # Evaluate the model
 
-def evaluate(model, loader, criterion, device):
-    model.eval()  # Set model to evaluation mode
+def evaluate(model, loader, criterion, device, roc_implementation=False):
+    model.eval()
     correct = 0
     total = 0
-    running_loss = 0.0  # To accumulate loss
+    running_loss = 0.0
     all_preds = []
     all_labels = []
-    
-    with tqdm(loader, desc=f"Testing model accuracy", unit="batch") as batch_progress:
+    all_probs = []
+
+    with tqdm(loader, desc="Testing model accuracy", unit="batch") as batch_progress:
         with torch.no_grad():
             for data in batch_progress:
-                data = data.to(device)  # So I can use either CPU or GPU depending on machine
+                data = data.to(device)
                 out = model(data)
-                
-                # Calculate loss
                 loss = criterion(out, data.y)
                 running_loss += loss.item()
-                
-                # Get predictions
-                predicted = (torch.sigmoid(out) >= 0.5).long()  # For binary classification (Safe vs Vulnerable)
-                correct += (predicted == data.y).sum().item()
-                total += data.y.size(0)
-                
-                all_preds.extend(predicted.cpu().numpy())
-                all_labels.extend(data.y.cpu().numpy())
-                
-                tqdm.write(f"Raw model outputs: {out[:5]}")
 
-    # Calculate accuracy and average loss
+                probs = torch.softmax(out, dim=1)[:, 1]  # Class 1 probabilities
+                _, preds = torch.max(out, dim=1)  # shape: [batch_size]
+                labels = data.y.view(-1).long()  # make sure it's 1D and long type
+                correct += (preds == labels).sum().item()
+                total += data.y.size(0)
+
+                all_probs.extend(probs.cpu().numpy())
+                all_preds.extend(preds.cpu().numpy())
+                all_labels.extend(data.y.cpu().numpy())
+
     accuracy = correct / total
-    avg_loss = running_loss / len(loader)  # Average loss per batch
-    print(f"Evaluation accuracy: {accuracy}, Average loss: {avg_loss:.4f}")
-    
+    avg_loss = running_loss / len(loader)
+
+    if roc_implementation:
+        return accuracy, avg_loss, all_preds, all_labels, all_probs
     return accuracy, avg_loss, all_preds, all_labels
 
 
+
 # ChatGPT Generated
-
-import os
-import random
-import json
-from sklearn.model_selection import train_test_split
-
-import os
-import random
-import json
-from sklearn.model_selection import train_test_split
-
 def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, upsample_vulnerable=False, downsample_safe=False):
     """
     Function to subsample and split data into training, validation, and test sets.
@@ -239,13 +253,13 @@ def load_configs():
     return (configs["input_dim"], configs["hidden_dim"], configs["output_dim"], 
             configs["dropout"], configs["l2_reg"], configs["batch_size"], configs["learning_rate"], 
             configs["epochs"], configs["load_existing_model"], configs["save_graphs"],
-            configs["archutecture_type"], configs["model_save_path"], 
+            configs["archutecture_type"], configs["roc_implementation"], configs["model_save_path"], 
             configs["visualizations_save_path"], configs["losses_file_path"])
 
 
 if __name__ == "__main__":
     #* STEP 1: LOAD CONFIGS
-    input_dim, hidden_dim, output_dim, dropout, l2_reg, batch_size, learning_rate, epochs, load_existing_model, save_graphs, architecture_type, model_save_path, visualizations_save_path, losses_file_path = load_configs()
+    input_dim, hidden_dim, output_dim, dropout, l2_reg, batch_size, learning_rate, epochs, load_existing_model, save_graphs, architecture_type, roc_implementation, model_save_path, visualizations_save_path, losses_file_path = load_configs()
     '''
         load_existing_model: boolean value, decides whether we load saved .pth model or train a new one
         save_graphs: boolean value, decide if we save graphs to computer (for faster runtime), or do not save (for better space efficiency)
@@ -318,47 +332,63 @@ if __name__ == "__main__":
         # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         print(vuln, nonvuln)
-        pos_weight = torch.tensor([nonvuln / vuln], dtype=torch.float).to(device)
-        criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight) #weight to help fix inbalance
+        total = vuln + nonvuln
 
-        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, losses_file_path="training_losses_GAT.json")    
+        # Weight inversely proportional to class frequency
+        weight = torch.tensor([
+            total / nonvuln,   # weight for class 0 (safe)
+            total / vuln       # weight for class 1 (vulnerable)
+        ], dtype=torch.float).to(device)
+        criterion = torch.nn.CrossEntropyLoss(weight=weight)
+
+        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=roc_implementation, losses_file_path="training_losses_GAT.json")    
     else:
         print("Loading existing model")
         model.load_state_dict(torch.load(model_save_path))
 
     #* STEP 3: TEST MODEL
-    test_accuracy, _, all_preds_test, all_labels_test = evaluate(model, test_loader, criterion, device)
-    # Test results
-    plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=visualizations_save_path)
-    print(classification_report(
-        all_labels_test,
-        all_preds_test,
-        target_names=["Safe", "Vulnerable"],
-        zero_division=0  # suppress warnings for undefined metrics
-    ))
+    if not roc_implementation:
+        test_accuracy, _, all_preds_test, all_labels_test = evaluate(model, test_loader, criterion, device)
+        # Test results
+        plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=visualizations_save_path)
+        print(classification_report(
+            all_labels_test,
+            all_preds_test,
+            target_names=["Safe", "Vulnerable"],
+            zero_division=0  # suppress warnings for undefined metrics
+        ))
+    else:
+        test_accuracy, _, all_preds_test, all_labels_test, all_probs_test = evaluate(
+        model, test_loader, criterion, device, roc_implementation
+        )
 
-    #* STEP 4: VALIDATE MODEL
-    val_accuracy, _, all_preds_val, all_labels_val = evaluate(model, val_loader, criterion, device)
-    # Validation results
-    plot_confusion_matrix(all_labels_val, all_preds_val, dataset_name="Validation", save_path=visualizations_save_path)
-    print(classification_report(
-        all_labels_val,
-        all_preds_val,
-        target_names=["Safe", "Vulnerable"],
-        zero_division=0  # suppress warnings for undefined metrics
-    ))
+        fpr, tpr, thresholds = roc_curve(all_labels_test, all_probs_test)
+        plot_roc_curve(all_labels_test, all_probs_test, dataset_name="Test", save_path=visualizations_save_path)
+        youden_index = tpr - fpr
+        best_thresh = thresholds[np.argmax(youden_index)]
+        print(f"📈 Best threshold (Youden's J): {best_thresh:.4f}")
 
-    #* STEP 5: SAVE PREDICTIONS AND LABELS TO JSON
+        # Apply new threshold
+        adjusted_preds = (np.array(all_probs_test) >= best_thresh).astype(int)
+
+        # Save confusion matrix with adjusted threshold
+        plot_confusion_matrix(all_labels_test, adjusted_preds, dataset_name="Test_ThresholdAdjusted", save_path=visualizations_save_path)
+
+        # Report
+        print("\n📊 Adjusted Threshold Performance:")
+        print(classification_report(
+            all_labels_test,
+            adjusted_preds,
+            target_names=["Safe", "Vulnerable"],
+            zero_division=0
+        ))
+
+    #* STEP 4: SAVE PREDICTIONS AND LABELS TO JSON
     results = {
         "test": {
             "predictions": [int(x) for x in all_preds_test],
             "labels": [int(x) for x in all_labels_test],
             "accuracy": float(test_accuracy)
-        },
-        "validation": {
-            "predictions": [int(x) for x in all_preds_val],
-            "labels": [int(x) for x in all_labels_val],
-            "accuracy": float(val_accuracy)
         }
     }
 
