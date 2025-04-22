@@ -87,13 +87,10 @@ def redo_idx_numbering(data):
     for i in range(len(data)):
         data[i]["idx"] = i
 
+database_name = "devign"
+database_path = os.path.join(BASE_DIR, f"{database_name}.json")
+database = load_json_dataset(database_path)
+transformed_dataset = transform_data(database, database_name)
+redo_idx_numbering(transformed_dataset)
 
-diversevul = load_json_dataset(os.path.join(BASE_DIR, "diversevul.json"))
-transformed_diversevul = transform_data(diversevul, "diversevul")
-
-combined_dataset_path = os.path.join(BASE_DIR, "new_complete_dataset.json")
-complete_dataset = load_json_dataset(combined_dataset_path)
-
-redo_idx_numbering(complete_dataset)
-
-save_dataset_to_json(complete_dataset, combined_dataset_path)
+save_dataset_to_json(transformed_dataset, database_path)
