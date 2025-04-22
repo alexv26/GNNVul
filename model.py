@@ -15,18 +15,26 @@ class GNNModel(nn.Module):
             dropout: Dropout probability
         '''
         super(GNNModel, self).__init__()
+        self.dropout = dropout
         if model.lower() == "gcn":
             self.conv1 = GCNConv(input_dim, hidden_dim)
             self.conv2 = GCNConv(hidden_dim, hidden_dim)
         elif model.lower() == "rgcn":
             self.conv1 = RGCNConv(input_dim, hidden_dim, num_relations=6)
             self.conv2 = RGCNConv(hidden_dim, hidden_dim, num_relations=6)
+            self.conv3 = RGCNConv(hidden_dim, hidden_dim, num_relations=6)
         else: # GAT
             self.conv1 = GATConv(input_dim, hidden_dim, heads=8, dropout=dropout)
             hidden_dim = hidden_dim * 8  # GAT concatenates heads by default
             self.conv2 = GATConv(hidden_dim, hidden_dim, heads=1, dropout=dropout)
         # Output layer
-        self.lin = nn.Linear(hidden_dim, 2) #! CHANGED self.lin = nn.Linear(hidden_dim, output_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(hidden_dim, output_dim)  # keep 1 for BCE or 2 for CrossEntropy
+        )
+
         self.dropout = dropout
         self.model = model.lower()
 
@@ -42,12 +50,16 @@ class GNNModel(nn.Module):
             # Second layer
             x = self.conv2(x, edge_index)
             x = F.relu(x)
+
+            # Third layer
+            x = self.conv3(x, edge_index)
+            s = F.relu(x)
             
             # Global pooling
             x = global_mean_pool(x, batch)
             
             # Output layer
-            x = self.lin(x)
+            x = self.mlp(x)
         else: # RGCN
             x, edge_index, edge_type, batch = data.x, data.edge_index, data.edge_attr, data.batch
 
@@ -59,6 +71,6 @@ class GNNModel(nn.Module):
             x = F.relu(x)
 
             x = global_mean_pool(x, batch)
-            x = self.lin(x)
+            x = self.mlp(x)
         
         return x # Shape: [batch_size, 2]
