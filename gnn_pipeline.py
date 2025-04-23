@@ -15,6 +15,8 @@ import random
 from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
+from collections import Counter
+from imblearn.over_sampling import RandomOverSampler
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
@@ -188,51 +190,71 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
     # Make output dir if not exists
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    
-    # Separate vulnerable and safe entries
-    vulnerable = [entry for entry in data if entry[target_key] == 1]
-    safe = [entry for entry in data if entry[target_key] == 0]
 
-    print(f"Original: {len(vulnerable)} vulnerable, {len(safe)} safe")
 
-    # Adjust vulnerable entries (upsample if needed)
+    # https://www.youtube.com/watch?v=aboZctrHfK8
+    indices = list(range(len(data)))
+    labels = [item['target'] for item in data]
+
+    idx_train, idx_temp, y_train, y_temp = train_test_split(
+        indices, labels, test_size=0.3, stratify=labels, random_state=42
+    )
+    idx_valid, idx_test, y_valid, y_test = train_test_split(
+        idx_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42
+    )
+
+    train_set = [data[i] for i in idx_train]
+    valid_set = [data[i] for i in idx_valid]
+    test_set = [data[i] for i in idx_test]
+
+    num_vuln_in_train = Counter(y_train)[1]
+    num_vuln_in_test = Counter(y_test)[1]
+    num_vuln_in_valid = Counter(y_valid)[1]
+
+    print(f"Before split | Train: {len(train_set)}, {(num_vuln_in_train / len(train_set) * 100):.2f}% Vulnerable, Valid: {len(valid_set)}, {(num_vuln_in_test / len(train_set) * 100):.2f}% Vulnerable, Test: {len(test_set)}, {(num_vuln_in_valid / len(train_set) * 100):.2f}% Vulnerable")
+
     if upsample_vulnerable:
-        vulnerable_sample_size = max(len(safe) // safe_ratio, len(vulnerable))  # Ensure at least the number of vulnerable entries
-        vulnerable_sampled = vulnerable * (vulnerable_sample_size // len(vulnerable))  # Repeat until size is reached
-        # If not an exact multiple, append extra samples
-        vulnerable_sampled.extend(random.sample(vulnerable, vulnerable_sample_size % len(vulnerable)))
-    else:
-        vulnerable_sampled = vulnerable
+        X = [[i] for i in range(len(train_set))]  # Just index, required 2D shape
+        y = [item[target_key] for item in train_set]
 
-    # Adjust safe entries (downsample if needed)
+        ros = RandomOverSampler(random_state=42)
+        X_resampled, y_resampled = ros.fit_resample(X, y)
+
+        # Remap oversampled indices back to dicts
+        train_set = [train_set[i[0]] for i in X_resampled]
+
+        count = Counter(y_resampled)
+        percent_vulnerable = (count[1] / (count[0] + count[1])) * 100
+        print(percent_vulnerable)
+
+        print(f"After split | Train: {len(train_set)}, {(num_vuln_in_train / len(train_set) * 100):.2f}% Vulnerable, Valid: {len(valid_set)}, {(num_vuln_in_test / len(train_set) * 100):.2f}% Vulnerable, Test: {len(test_set)}, {(num_vuln_in_valid / len(train_set) * 100):.2f}% Vulnerable")
+    
+     # Optionally downsample safe in training set
     if downsample_safe:
-        safe_sample_size = min(len(safe), len(vulnerable_sampled) * safe_ratio)  # Match desired ratio
-        safe_sampled = random.sample(safe, safe_sample_size)
-    else:
-        safe_sampled = safe
+        safe = [item for item in train_set if item[target_key] == 0]
+        vuln = [item for item in train_set if item[target_key] == 1]
+        random.seed(42)
+        max_safe = safe_ratio * len(vuln)
+        if len(safe) > max_safe:
+            safe = random.sample(safe, max_safe)
+        train_set = safe + vuln
+        random.shuffle(train_set)
 
-    # Separate the data into training, validation, and test sets before combining
-    combined_data = vulnerable_sampled + safe_sampled
-    random.shuffle(combined_data)  # Shuffle combined data to ensure randomness
+        print(f"After split | Train: {len(train_set)}, {(num_vuln_in_train / len(train_set) * 100):.2f}% Vulnerable, Valid: {len(valid_set)}, {(num_vuln_in_test / len(train_set) * 100):.2f}% Vulnerable, Test: {len(test_set)}, {(num_vuln_in_valid / len(train_set) * 100):.2f}% Vulnerable")
 
-    # Stratified split
-    y = [entry[target_key] for entry in combined_data]
-    train_val, test = train_test_split(combined_data, test_size=0.1, stratify=y, random_state=42)
-    y_train_val = [entry[target_key] for entry in train_val]
-    train, valid = train_test_split(train_val, test_size=0.1111, stratify=y_train_val, random_state=42)  # 10% of total
 
     # Save to JSON files
     def save(dataset, name):
         with open(f"{output_dir}/{name}.json", 'w') as f:
             json.dump(dataset, f, indent=2)
 
-    save(train, "train")
-    save(valid, "valid")
-    save(test, "test")
+    save(train_set, "train")
+    save(valid_set, "valid")
+    save(test_set, "test")
 
-    print(f"Saved: {len(train)} train, {len(valid)} valid, {len(test)} test")
+    print(f"Saved: {len(train_set)} train, {len(valid_set)} valid, {len(test_set)} test")
 
-    return train, valid, test
+    return train_set, valid_set, test_set
 
 
 def print_split_stats(split_name, split_data):
@@ -275,6 +297,7 @@ if __name__ == "__main__":
     parser.add_argument("--downsample-safe", type=str, default=False, help="Downsample safe entries (default: False)")
     parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
     parser.add_argument("--do-lr-scheduling", type=bool, default=True, help="Adjust learning rate after validation loss plateaus (default: True)")
+    parser.add_argument("--vul-to-safe-ratio", type=int, default=3, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
 
     args = parser.parse_args()
 
@@ -300,7 +323,7 @@ if __name__ == "__main__":
         print("🚧 Splitting dataset into train/val/test...")
         with open(args.in_dataset, 'r') as f:
             full_data = json.load(f)
-        train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe)
+        train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe, safe_ratio=args.vul_to_safe_ratio)
 
         train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
         val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
