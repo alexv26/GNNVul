@@ -105,15 +105,20 @@ class GraphDataset(Dataset):
         edge_attr = torch.tensor(edge_attr, dtype=torch.long)
 
         # LABEL HANDLING: Support both cvss_score (float) and target (already binary)
-        #! NOTE: for now, just binary classification, will use strictly "target"
         label = torch.tensor(int(self.data[idx]["target"]), dtype=torch.long)
-        '''label_raw = self.data[idx].get("cvss_score", None)
-        if label_raw is not None:
-            score = float(label_raw)
-            label = torch.tensor(0.0 if score == 0.0 else 1.0, dtype=torch.float)
-        else:
-            label = torch.tensor(float(self.data[idx]["target"]), dtype=torch.float)'''
+        
+        flag_keys = [
+            'uses_dangerous_function',
+            'potential_buffer_overflow',
+            'pointer_arithmetic',
+            'memory_allocation',
+            'format_string_vulnerability'
+        ]
 
+        flag_vector = torch.tensor(
+            [1.0 if G.graph.get(flag, False) else 0.0 for flag in flag_keys],
+            dtype=torch.float
+        )
 
-        data = Data(x=node_feature_matrix, edge_index=edge_index, edge_attr=edge_attr, y=label)
+        data = Data(x=node_feature_matrix, edge_index=edge_index, edge_attr=edge_attr, y=label, graph_flags=flag_vector)
         return data
