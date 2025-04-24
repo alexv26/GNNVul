@@ -14,7 +14,7 @@ import argparse
 from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
-from data.data_processing import subsample_and_split, print_split_stats
+from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets
 from utils.util_funcs import load_configs, load_w2v_from_huggingface
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     '''
     if args.do_data_splitting is False:
         if args.download_presplit_datasets:
-            pass
+            load_huggingface_datasets()
         else:
             train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
             val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
