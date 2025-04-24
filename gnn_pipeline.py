@@ -15,7 +15,7 @@ from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
 from data.data_processing import subsample_and_split, print_split_stats
-from utils.util_funcs import load_configs
+from utils.util_funcs import load_configs, load_w2v_from_huggingface
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
@@ -189,6 +189,8 @@ if __name__ == "__main__":
     parser.add_argument("--upsample-vulnerable", type=str, default=False, help="Upsample vulnerable entries (default: False)")
     parser.add_argument("--downsample-safe", type=str, default=False, help="Downsample safe entries (default: False)")
     parser.add_argument("--do-data-splitting", type=bool, default=False, help="Does data need to be split or is it already split? (default: False)")
+    parser.add_argument("--download-presplit-datasets", type=bool, default=False, help="Option to download pre-split datasets from Huggingface (default: False)") 
+    parser.add_argument("--download-w2v", type=bool, default=False, help="Option to download w2v from Huggingface (default: False)") 
     parser.add_argument("--do-lr-scheduling", type=bool, default=True, help="Adjust learning rate after validation loss plateaus (default: True)")
     parser.add_argument("--vul-to-safe-ratio", type=int, default=3, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
     parser.add_argument("--generate-dataset-only", type=bool, default=False, help="Only generate dataset splits, do not run model (default: False)")
@@ -197,9 +199,14 @@ if __name__ == "__main__":
 
     # LOAD or CREATE w2v
     if not os.path.exists(W2V_PATH):
-        print("Building new w2v model")
-        train_w2v(args.in_dataset)
-        w2v = Word2Vec.load(W2V_PATH)
+        if args.download_w2v:
+            print("Loading w2v from huggingface...")
+            load_w2v_from_huggingface()
+            w2v = Word2Vec.load(W2V_PATH)
+        else:
+            print("Training new w2v model")
+            train_w2v(args.in_dataset)
+            w2v = Word2Vec.load(W2V_PATH)
     else:
         print("Word2Vec exists. Loading pretrained model...")
         w2v = Word2Vec.load(W2V_PATH)
@@ -209,10 +216,13 @@ if __name__ == "__main__":
     and try to keep it balanced between datasets of vuln/nonvuln.
     '''
     if args.do_data_splitting is False:
-        train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
-        val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
-        test_dataset = GraphDataset(args.test_dataset, w2v, save_graphs)
-    
+        if args.download_presplit_datasets:
+            pass
+        else:
+            train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
+            val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
+            test_dataset = GraphDataset(args.test_dataset, w2v, save_graphs)
+
     else:    
         print("🚧 Splitting dataset into train/val/test...")
         with open(args.in_dataset, 'r') as f:
