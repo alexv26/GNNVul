@@ -218,6 +218,9 @@ if __name__ == "__main__":
     if args.do_data_splitting is False:
         if args.download_presplit_datasets:
             load_huggingface_datasets()
+            train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
+            val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
+            test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
         else:
             train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
             val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
