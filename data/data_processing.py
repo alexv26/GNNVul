@@ -5,6 +5,8 @@ import random
 from collections import Counter
 from imblearn.over_sampling import RandomOverSampler
 import os
+from huggingface_hub import hf_hub_download
+
 
 # ChatGPT helped with some of the coding
 def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, upsample_vulnerable=False, downsample_safe=False, downsample_factor=2):
@@ -81,6 +83,43 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
 
     return train_set, valid_set, test_set
 
+def download_huggingface_datasets():
+    # LOAD DATASET
+
+    repo_id = "alexv26/GNNVulDatasets"
+    train_name = "train.json"
+    test_name = "test.json"
+    valid_name = "valid.json"
+
+    # Set your target directory
+    target_dir = "data/split_datasets"
+
+    # Create the folder if it doesn't exist
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Download train
+    hf_hub_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        filename=train_name,
+        local_dir=target_dir,
+    )
+
+    # Download test
+    hf_hub_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        filename=test_name,
+        local_dir=target_dir,
+    )
+
+    # Download valid
+    hf_hub_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        filename=valid_name,
+        local_dir=target_dir,
+    )
 
 def print_split_stats(split_name, split_data):
     total = len(split_data)
