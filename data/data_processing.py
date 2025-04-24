@@ -83,7 +83,7 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
 
     return train_set, valid_set, test_set
 
-def download_huggingface_datasets():
+def load_huggingface_datasets():
     # LOAD DATASET
 
     repo_id = "alexv26/GNNVulDatasets"
