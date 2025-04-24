@@ -7,6 +7,7 @@
     "batch_size": 128,
     "learning_rate": 0.001,
     "epochs": 200,
+    "downsample_factor": 2,
     "load_existing_model": false,
     "save_graphs": true,
     "archutecture_type": "rgcn",
