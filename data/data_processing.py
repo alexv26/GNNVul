@@ -6,7 +6,9 @@ from collections import Counter
 from imblearn.over_sampling import RandomOverSampler
 import os
 from huggingface_hub import hf_hub_download
-
+from .graph_gen.graph_generator import generate_one_graph as gengraph
+from tqdm import tqdm
+import pickle
 
 # ChatGPT helped with some of the coding
 def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, upsample_vulnerable=False, downsample_safe=False, downsample_factor=2):
@@ -128,3 +130,23 @@ def print_split_stats(split_name, split_data):
     vuln = sum(get_label(entry) for entry in split_data)
     nonvuln = total - vuln
     print(f"{split_name} — Total: {total}, Vulnerable: {vuln} ({vuln/total:.2%}), Non-vulnerable: {nonvuln} ({nonvuln/total:.2%})")
+
+def preprocess_graphs(train, test, valid):
+    #! NEW: DICT TO SAVE GRAPHS TO SAVE COMPUTER SPACE
+    seen_graphs = {}
+    complete_dataset = train + test + valid
+    for i in tqdm(range(len(complete_dataset)), desc="Preprocessing graphs", unit="graph"):
+        idx = complete_dataset[i]["idx"]
+        if idx not in seen_graphs:
+            G = gengraph(complete_dataset, i, save_graphs=False)  # set save_graphs as desired
+            seen_graphs[idx] = G
+    return seen_graphs
+
+def save_seengraphs(seen_graphs: dict):
+    with open("data/graphs/seen_graphs.pkl", "wb") as f:
+        pickle.dump(seen_graphs, f)
+
+def load_seengraphs():
+    with open("data/graphs/seen_graphs.pkl", "rb") as f:
+        seen_graphs = pickle.load(f)
+    return seen_graphs

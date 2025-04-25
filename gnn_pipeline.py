@@ -14,8 +14,9 @@ import argparse
 from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
-from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets
+from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs
 from utils.util_funcs import load_configs, load_w2v_from_huggingface
+from utils.json_functions import load_json_array
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
@@ -215,26 +216,35 @@ if __name__ == "__main__":
     The code below basically handles whether you need to do pre-splitting of data or not. If we do, we a pre-split of the data
     and try to keep it balanced between datasets of vuln/nonvuln.
     '''
-    if args.do_data_splitting is False:
-        if args.download_presplit_datasets:
-            load_huggingface_datasets()
-            train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
-            val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
-            test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
-        else:
-            train_dataset = GraphDataset(args.train_dataset, w2v, save_graphs)
-            val_dataset = GraphDataset(args.valid_dataset, w2v, save_graphs)
-            test_dataset = GraphDataset(args.test_dataset, w2v, save_graphs)
 
-    else:    
+
+    if (args.do_data_splitting == False) and args.download_presplit_datasets:
+        load_huggingface_datasets()
+
+    elif not (os.path.exists("data/split_datasets/train.json") and os.path.exists("data/split_datasets/test.json") and os.path.exists("data/split_datasets/valid.json")):    
         print("🚧 Splitting dataset into train/val/test...")
         with open(args.in_dataset, 'r') as f:
             full_data = json.load(f)
-        train_data, val_data, test_data = subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe, safe_ratio=args.vul_to_safe_ratio, downsample_factor=downsample_factor)
+        subsample_and_split(full_data, "data/split_datasets", upsample_vulnerable=args.upsample_vulnerable, downsample_safe=args.downsample_safe, safe_ratio=args.vul_to_safe_ratio, downsample_factor=downsample_factor)
 
-        train_dataset = GraphDataset("data/split_datasets/train.json", w2v, save_graphs)
-        val_dataset = GraphDataset("data/split_datasets/valid.json", w2v, save_graphs)
-        test_dataset = GraphDataset("data/split_datasets/test.json", w2v, save_graphs)
+    # Load train/test/valid data arrays
+    train_array = load_json_array(args.train_dataset)
+    test_array = load_json_array(args.test_dataset)
+    valid_array = load_json_array(args.valid_dataset)
+
+    if os.path.exists("data/graphs/seen_graphs.pkl"):
+        print("Loading seen graphs dict")
+        seen_graphs = load_seengraphs()
+        print(seen_graphs[0])
+    
+    else:
+        # Preprocess graphs for speed later
+        seen_graphs = preprocess_graphs(train_array, test_array, valid_array)
+        save_seengraphs(seen_graphs)
+    
+    train_dataset = GraphDataset(train_array, w2v, seen_graphs, save_graphs)
+    val_dataset = GraphDataset(valid_array, w2v, seen_graphs, save_graphs)
+    test_dataset = GraphDataset(test_array, w2v, seen_graphs, save_graphs)
     
     print_split_stats("Train", train_dataset.get_data())
     print_split_stats("Validation", val_dataset.get_data())
@@ -251,6 +261,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_reg)
+
     if args.do_lr_scheduling:
         print("The model will adjust learning rate when validation loss plateau's.")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)

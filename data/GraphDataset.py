@@ -3,7 +3,6 @@ from torch_geometric.data import Data
 import torch
 import os
 from gensim.models import Word2Vec
-from .json_functions import JsonFuncs as js
 import re
 from .graph_gen.graph_generator import generate_one_graph as gengraph
 
@@ -26,11 +25,12 @@ def split_name_into_subtokens(name):
 
 
 class GraphDataset(Dataset):
-    def __init__(self, database_path, w2v, save_graphs=True):
-        self.data = js.load_json_array(database_path)
+    def __init__(self, data, w2v, seen_graphs, save_graphs=True):
+        self.data = data
         self.save_graphs = save_graphs
         self.w2v = w2v
         self.embedding_dim = self.w2v.vector_size
+        self.seen_graphs = seen_graphs
 
     def __len__(self):
         return len(self.data)
@@ -51,8 +51,9 @@ class GraphDataset(Dataset):
     
     def __getitem__(self, idx):
 
-        #* STEP 1: CREATE GRAPH
-        G = gengraph(self.data, idx, save_graphs=self.save_graphs) # save_graphs helps decide if we save the graphs to computer or not
+        #* STEP 1: LOAD GRAPH FROM PREPROCESSED GRAPHS
+        global_idx = self.data[idx]["idx"]  # Get the global unique ID
+        G = self.seen_graphs[global_idx]
 
         #* STEP TWO: CREATE GRAPH FEATURES
         # a: node feature matrix
