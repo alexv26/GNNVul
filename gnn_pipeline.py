@@ -235,7 +235,6 @@ if __name__ == "__main__":
     if os.path.exists("data/graphs/seen_graphs.pkl"):
         print("Loading seen graphs dict")
         seen_graphs = load_seengraphs()
-        print(seen_graphs[0])
     
     else:
         # Preprocess graphs for speed later
