@@ -276,8 +276,8 @@ if __name__ == "__main__":
 
         # Weight inversely proportional to class frequency
         weight = torch.tensor([
-            total / nonvuln,   # weight for class 0 (safe)
-            total / vuln       # weight for class 1 (vulnerable)
+            nonvuln / total,   # weight for class 0 (safe)
+            vuln / total       # weight for class 1 (vulnerable)
         ], dtype=torch.float).to(device)
         criterion = torch.nn.CrossEntropyLoss(weight=weight)
 
