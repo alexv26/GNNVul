@@ -1,28 +1,33 @@
 # Source: https://medium.com/data-scientists-diary/implementing-focal-loss-in-pytorch-for-class-imbalance-24d8aa3b59d9
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-class FocalLoss(nn.Module):
+class FocalCrossEntropyLoss(nn.Module):
     def __init__(self, alpha=0.25, gamma=2, reduction='mean'):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha  # controls class imbalance
-        self.gamma = gamma  # focuses on hard examples
+        super(FocalCrossEntropyLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
         self.reduction = reduction
 
     def forward(self, inputs, targets):
-        # Calculate Binary Cross-Entropy Loss for each sample
-        BCE_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        # Standard CrossEntropyLoss
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
         
-        # Compute pt (model confidence on true class)
-        pt = torch.exp(-BCE_loss)
+        # Calculate probabilities
+        probs = torch.softmax(inputs, dim=1)
         
-        # Apply the focal adjustment
-        focal_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+        # Get the probabilities of the correct class
+        p_t = probs.gather(1, targets.view(-1, 1)).squeeze()
 
-        # Apply reduction (mean, sum, or no reduction)
+        # Compute the Focal Loss adjustment
+        focal_loss = self.alpha * (1 - p_t) ** self.gamma * ce_loss
+
+        # Reduce loss based on the specified reduction method
         if self.reduction == 'mean':
             return focal_loss.mean()
         elif self.reduction == 'sum':
             return focal_loss.sum()
         else:
             return focal_loss
+

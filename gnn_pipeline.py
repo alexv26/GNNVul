@@ -16,7 +16,7 @@ from gensim.models import Word2Vec
 import numpy as np
 from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs
 from utils.util_funcs import load_configs, load_w2v_from_huggingface, early_stopping
-from utils.FocalLoss import FocalLoss
+from utils.FocalLoss import FocalCrossEntropyLoss
 from utils.json_functions import load_json_array
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -310,7 +310,7 @@ if __name__ == "__main__":
             vuln / total       # weight for class 1 (vulnerable)
         ], dtype=torch.float).to(device)
         
-        criterion = torch.nn.CrossEntropyLoss(weight=weight)
+        criterion = FocalCrossEntropyLoss()
 
         train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json")    
     else:
