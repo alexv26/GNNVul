@@ -16,6 +16,7 @@ from gensim.models import Word2Vec
 import numpy as np
 from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs
 from utils.util_funcs import load_configs, load_w2v_from_huggingface, early_stopping
+from utils.FocalLoss import FocalLoss
 from utils.json_functions import load_json_array
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +35,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         "val_f1": []
     }
     best_val_f1 = 0.0
+    epochs_without_improvement = 0
 
     for epoch in range(epochs):
         model.train()  # Set model to training mode
@@ -50,7 +52,8 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
                 out = model(data)  # Forward pass
                 
                 # Calculate loss
-                loss = criterion(out, data.y)
+                labels = data.y.view(-1, 1).float()  # Ensure targets are float and shape [batch_size, 1]
+                loss = criterion(out, labels)
                 loss.backward()  # Backpropagation
                 optimizer.step()  # Update weights
                 
@@ -59,7 +62,8 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
 
                 # Get predictions
                 _, predicted = torch.max(out, 1)
-                correct += (predicted == data.y).sum().item()
+                labels = data.y.view(-1, 1).float()  # Ensure targets are float and shape [batch_size, 1]
+                correct += (predicted == labels.view(-1)).sum().item()
                 total += data.y.size(0)
                 
                 # Update the progress bar with loss and accuracy info
@@ -106,6 +110,11 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
         history["val_recall"].append(rec)
         history["val_f1"].append(f1)
 
+        stop_early, ewi = early_stopping(best_val_f1, f1, patience, epochs_without_improvement)
+        epochs_without_improvement = ewi
+        if stop_early:
+            break
+
         # Save best model
         if f1 > best_val_f1:
             best_val_f1 = f1
@@ -116,7 +125,6 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
             # Pass validation loss to the scheduler
             scheduler.step(val_loss=val_loss)
         
-        early_stopping(val_loss, f1, patience)
 
     # Save final loss and metrics
     with open(losses_file_path, 'w') as f:
@@ -152,13 +160,13 @@ def evaluate(model, loader, criterion, device, roc_implementation=False):
             for data in batch_progress:
                 data = data.to(device)
                 out = model(data)
-                loss = criterion(out, data.y)
+                labels = data.y.view(-1, 1).float()
+                loss = criterion(out, labels)
                 running_loss += loss.item()
 
-                probs = torch.softmax(out, dim=1)[:, 1]  # Class 1 probabilities
+                probs = torch.sigmoid(out).squeeze()  # Sigmoid output, squeeze to remove the extra dimension
                 _, preds = torch.max(out, dim=1)  # shape: [batch_size]
-                labels = data.y.view(-1).long()  # make sure it's 1D and long type
-                correct += (preds == labels).sum().item()
+                correct += (preds == labels.view(-1)).sum().item()
                 total += data.y.size(0)
 
                 all_probs.extend(probs.cpu().numpy())
@@ -198,7 +206,6 @@ if __name__ == "__main__":
     parser.add_argument("--vul-to-safe-ratio", type=int, default=3, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
     parser.add_argument("--generate-dataset-only", type=bool, default=False, help="Only generate dataset splits, do not run model (default: False)")
     parser.add_argument("--load-existing-model", type=bool, default=False, help="Load pre-trained model (default: False)")
-    parser.add_argument("--model-save-path", type=str, default="run_history/trained_GNN_model_RGCN.pth", help="Path to pre-trained model (default: trained_GNN_model_RGCN.pth)")
     parser.add_argument("--roc-implementation", type=bool, default=True, help="Does the model use ROC curve based decision boundary adjustments? (default: True)")
     parser.add_argument("--architecture-type", type=str, default="rgcn", help="Architecture type (default: rgcn)")
     args = parser.parse_args()
@@ -208,13 +215,18 @@ if __name__ == "__main__":
     if not (os.path.exists("run_history")):
         os.mkdir("run_history")
     
-    num_files = len([name for name in os.listdir('run_history') if os.path.isfile(name)])
-    run_history_save_path = f"run_history/run{num_files+1}" 
+    def count_folders(folder_path):
+        return sum(1 for item in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, item))) if os.path.isdir(folder_path) else None
 
-    visualizations_save_path = "run_history/visualizations"
+    num_folders = count_folders("run_history")
+    run_history_save_path = f"run_history/run{num_folders+1}" 
+    os.mkdir(run_history_save_path)
+
+    visualizations_save_path = f"{run_history_save_path}/visualizations"
     os.mkdir(visualizations_save_path)
 
-    losses_file_path = f"run_history/run_{num_files + 1}_losses.json"
+    losses_file_path = f"run_history/run_{num_folders + 1}_losses.json"
+    model_save_path = f"{run_history_save_path}/saved_model.pth"
 
 
     # LOAD or CREATE w2v
@@ -298,12 +310,13 @@ if __name__ == "__main__":
             nonvuln / total,   # weight for class 0 (safe)
             vuln / total       # weight for class 1 (vulnerable)
         ], dtype=torch.float).to(device)
-        criterion = torch.nn.CrossEntropyLoss(weight=weight)
+        #criterion = torch.nn.CrossEntropyLoss(weight=weight)
+        criterion = FocalLoss(alpha=0.25, gamma=2.0, reduction='mean')
 
-        train(model, train_loader, val_loader, optimizer, model_save_path=args.model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json")    
+        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json")    
     else:
         print("Loading existing model")
-        model.load_state_dict(torch.load(args.model_save_path))
+        model.load_state_dict(torch.load(model_save_path))
 
     #* STEP 3: TEST MODEL
     if not args.roc_implementation:

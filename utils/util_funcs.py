@@ -44,7 +44,9 @@ def load_w2v_from_huggingface():
         local_dir=target_dir,
     )
 
-def early_stopping(val_loss, val_f1, patience=5):
+
+def early_stopping(best_f1, val_f1, patience=5, epochs_without_improvement=0):
+    print(f"Epochs without improvement: {epochs_without_improvement}")
     if val_f1 > best_f1:
         best_f1 = val_f1
         epochs_without_improvement = 0
@@ -53,4 +55,4 @@ def early_stopping(val_loss, val_f1, patience=5):
         if epochs_without_improvement >= patience:
             print("Early stopping...")
             return True
-    return False
+    return False, epochs_without_improvement
