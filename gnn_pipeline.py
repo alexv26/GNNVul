@@ -52,7 +52,7 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
                 out = model(data)  # Forward pass
                 
                 # Calculate loss
-                labels = data.y.view(-1, 1).float()  # Ensure targets are float and shape [batch_size, 1]
+                labels = data.y
                 loss = criterion(out, labels)
                 loss.backward()  # Backpropagation
                 optimizer.step()  # Update weights
@@ -62,7 +62,6 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
 
                 # Get predictions
                 _, predicted = torch.max(out, 1)
-                labels = data.y.view(-1, 1).float()  # Ensure targets are float and shape [batch_size, 1]
                 correct += (predicted == labels.view(-1)).sum().item()
                 total += data.y.size(0)
                 
@@ -160,13 +159,13 @@ def evaluate(model, loader, criterion, device, roc_implementation=False):
             for data in batch_progress:
                 data = data.to(device)
                 out = model(data)
-                labels = data.y.view(-1, 1).float()
+                labels = data.y
                 loss = criterion(out, labels)
                 running_loss += loss.item()
 
-                probs = torch.sigmoid(out).squeeze()  # Sigmoid output, squeeze to remove the extra dimension
+                probs = torch.softmax(out, dim=1)[:, 1]  # Class 1 probabilities
                 _, preds = torch.max(out, dim=1)  # shape: [batch_size]
-                correct += (preds == labels.view(-1)).sum().item()
+                correct += (preds == labels).sum().item()
                 total += data.y.size(0)
 
                 all_probs.extend(probs.cpu().numpy())
@@ -310,8 +309,8 @@ if __name__ == "__main__":
             nonvuln / total,   # weight for class 0 (safe)
             vuln / total       # weight for class 1 (vulnerable)
         ], dtype=torch.float).to(device)
-        #criterion = torch.nn.CrossEntropyLoss(weight=weight)
-        criterion = FocalLoss(alpha=0.25, gamma=2.0, reduction='mean')
+        
+        criterion = torch.nn.CrossEntropyLoss(weight=weight)
 
         train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json")    
     else:
