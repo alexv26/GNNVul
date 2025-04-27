@@ -6,13 +6,7 @@
     "l2_reg": 1e-6,
     "batch_size": 128,
     "learning_rate": 0.001,
-    "epochs": 200,
+    "epochs": 100,
     "downsample_factor": 2,
-    "load_existing_model": false,
-    "save_graphs": true,
-    "archutecture_type": "rgcn",
-    "roc_implementation": true,
-    "model_save_path": "trained_GNN_model_RGCN.pth",
-    "visualizations_save_path": "visualizations/200epochs_0.001lr_hiddendim=200_batchsize=128_rand-oversampling",
-    "losses_file_path": "training_losses_RGCN.json"
+    "patience": 5
 }

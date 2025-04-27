@@ -25,9 +25,8 @@ def split_name_into_subtokens(name):
 
 
 class GraphDataset(Dataset):
-    def __init__(self, data, w2v, seen_graphs, save_graphs=True):
+    def __init__(self, data, w2v, seen_graphs):
         self.data = data
-        self.save_graphs = save_graphs
         self.w2v = w2v
         self.embedding_dim = self.w2v.vector_size
         self.seen_graphs = seen_graphs

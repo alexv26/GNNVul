@@ -15,7 +15,7 @@ from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
 from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs
-from utils.util_funcs import load_configs, load_w2v_from_huggingface
+from utils.util_funcs import load_configs, load_w2v_from_huggingface, early_stopping
 from utils.json_functions import load_json_array
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -112,9 +112,11 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
             torch.save(model.state_dict(), model_save_path)
             print(f"✅ New best model saved at epoch {epoch+1} (Val F1: {f1:.4f})")
 
-            if scheduler:
-                # Pass validation loss to the scheduler
-                scheduler.step(val_loss=val_loss)
+        if scheduler:
+            # Pass validation loss to the scheduler
+            scheduler.step(val_loss=val_loss)
+        
+        early_stopping(val_loss, f1, patience)
 
     # Save final loss and metrics
     with open(losses_file_path, 'w') as f:
@@ -172,7 +174,7 @@ def evaluate(model, loader, criterion, device, roc_implementation=False):
 
 if __name__ == "__main__":
     #* STEP 1: LOAD CONFIGS
-    input_dim, hidden_dim, output_dim, dropout, l2_reg, batch_size, learning_rate, epochs, downsample_factor, load_existing_model, save_graphs, architecture_type, roc_implementation, model_save_path, visualizations_save_path, losses_file_path = load_configs()
+    input_dim, hidden_dim, output_dim, dropout, l2_reg, batch_size, learning_rate, epochs, downsample_factor, patience = load_configs()
     '''
         load_existing_model: boolean value, decides whether we load saved .pth model or train a new one
         save_graphs: boolean value, decide if we save graphs to computer (for faster runtime), or do not save (for better space efficiency)
@@ -195,8 +197,25 @@ if __name__ == "__main__":
     parser.add_argument("--do-lr-scheduling", type=bool, default=True, help="Adjust learning rate after validation loss plateaus (default: True)")
     parser.add_argument("--vul-to-safe-ratio", type=int, default=3, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
     parser.add_argument("--generate-dataset-only", type=bool, default=False, help="Only generate dataset splits, do not run model (default: False)")
-
+    parser.add_argument("--load-existing-model", type=bool, default=False, help="Load pre-trained model (default: False)")
+    parser.add_argument("--model-save-path", type=str, default="run_history/trained_GNN_model_RGCN.pth", help="Path to pre-trained model (default: trained_GNN_model_RGCN.pth)")
+    parser.add_argument("--roc-implementation", type=bool, default=True, help="Does the model use ROC curve based decision boundary adjustments? (default: True)")
+    parser.add_argument("--architecture-type", type=str, default="rgcn", help="Architecture type (default: rgcn)")
     args = parser.parse_args()
+
+
+    # SAVE RUN HISTORY
+    if not (os.path.exists("run_history")):
+        os.mkdir("run_history")
+    
+    num_files = len([name for name in os.listdir('run_history') if os.path.isfile(name)])
+    run_history_save_path = f"run_history/run{num_files+1}" 
+
+    visualizations_save_path = "run_history/visualizations"
+    os.mkdir(visualizations_save_path)
+
+    losses_file_path = f"run_history/run_{num_files + 1}_losses.json"
+
 
     # LOAD or CREATE w2v
     if not os.path.exists(W2V_PATH):
@@ -241,9 +260,9 @@ if __name__ == "__main__":
         seen_graphs = preprocess_graphs(train_array, test_array, valid_array)
         save_seengraphs(seen_graphs)
     
-    train_dataset = GraphDataset(train_array, w2v, seen_graphs, save_graphs)
-    val_dataset = GraphDataset(valid_array, w2v, seen_graphs, save_graphs)
-    test_dataset = GraphDataset(test_array, w2v, seen_graphs, save_graphs)
+    train_dataset = GraphDataset(train_array, w2v, seen_graphs)
+    val_dataset = GraphDataset(valid_array, w2v, seen_graphs)
+    test_dataset = GraphDataset(test_array, w2v, seen_graphs)
     
     print_split_stats("Train", train_dataset.get_data())
     print_split_stats("Validation", val_dataset.get_data())
@@ -256,9 +275,9 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
-    if architecture_type == "rgcn": input_dim = train_dataset[0].x.shape[1]
+    if args.architecture_type == "rgcn": input_dim = train_dataset[0].x.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=architecture_type).to(device)
+    model = GNNModel(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, dropout=dropout, model=args.architecture_type).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_reg)
 
     if args.do_lr_scheduling:
@@ -268,7 +287,7 @@ if __name__ == "__main__":
         scheduler = None
 
     #* STEP 2: TRAIN MODEL
-    if not load_existing_model:
+    if not args.load_existing_model:
         # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         print(vuln, nonvuln)
@@ -281,13 +300,13 @@ if __name__ == "__main__":
         ], dtype=torch.float).to(device)
         criterion = torch.nn.CrossEntropyLoss(weight=weight)
 
-        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=roc_implementation, losses_file_path="training_losses_GAT.json")    
+        train(model, train_loader, val_loader, optimizer, model_save_path=args.model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json")    
     else:
         print("Loading existing model")
-        model.load_state_dict(torch.load(model_save_path))
+        model.load_state_dict(torch.load(args.model_save_path))
 
     #* STEP 3: TEST MODEL
-    if not roc_implementation:
+    if not args.roc_implementation:
         test_accuracy, _, all_preds_test, all_labels_test = evaluate(model, test_loader, criterion, device)
         # Test results
         plot_confusion_matrix(all_labels_test, all_preds_test, dataset_name="Test", save_path=visualizations_save_path)
@@ -299,7 +318,7 @@ if __name__ == "__main__":
         ))
     else:
         test_accuracy, _, all_preds_test, all_labels_test, all_probs_test = evaluate(
-        model, test_loader, criterion, device, roc_implementation
+        model, test_loader, criterion, device, args.roc_implementation
         )
 
         fpr, tpr, thresholds = roc_curve(all_labels_test, all_probs_test)

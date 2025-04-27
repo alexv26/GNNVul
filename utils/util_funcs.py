@@ -8,9 +8,7 @@ def load_configs():
         configs: dict = json.load(file)
     return (configs["input_dim"], configs["hidden_dim"], configs["output_dim"], 
             configs["dropout"], configs["l2_reg"], configs["batch_size"], configs["learning_rate"], 
-            configs["epochs"], configs["downsample_factor"], configs["load_existing_model"], 
-            configs["save_graphs"], configs["archutecture_type"], configs["roc_implementation"], 
-            configs["model_save_path"], configs["visualizations_save_path"], configs["losses_file_path"])
+            configs["epochs"], configs["downsample_factor"], configs["patience"])
 
 def load_w2v_from_huggingface():
     repo_id = "alexv26/pretrained_w2v"
@@ -45,3 +43,14 @@ def load_w2v_from_huggingface():
         filename=w2v_file3,
         local_dir=target_dir,
     )
+
+def early_stopping(val_loss, val_f1, patience=5):
+    if val_f1 > best_f1:
+        best_f1 = val_f1
+        epochs_without_improvement = 0
+    else:
+        epochs_without_improvement += 1
+        if epochs_without_improvement >= patience:
+            print("Early stopping...")
+            return True
+    return False
