@@ -46,12 +46,12 @@ def load_w2v_from_huggingface():
 
 
 def early_stopping(best_f1, val_f1, patience=5, epochs_without_improvement=0):
-    print(f"Epochs without improvement: {epochs_without_improvement}")
     if val_f1 > best_f1:
         best_f1 = val_f1
         epochs_without_improvement = 0
     else:
         epochs_without_improvement += 1
+        print(f"Epochs without improvement: {epochs_without_improvement}")
         if epochs_without_improvement >= patience:
             print("Early stopping...")
             return True
