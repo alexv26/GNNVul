@@ -10,8 +10,7 @@ def load_configs():
             configs["dropout"], configs["l2_reg"], configs["batch_size"], configs["learning_rate"], 
             configs["epochs"], configs["downsample_factor"], configs["patience"])
 
-def load_w2v_from_huggingface():
-    repo_id = "alexv26/pretrained_w2v"
+def load_w2v_from_huggingface(repo_id):
     w2v_file1 = "word2vec_code.model"
     w2v_file2 = "word2vec_code.model.syn1neg.npy"
     w2v_file3 = "word2vec_code.model.wv.vectors.npy"

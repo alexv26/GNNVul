@@ -203,6 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--download-presplit-datasets", type=bool, default=False, help="Option to download pre-split datasets from Huggingface (default: False)") 
     parser.add_argument("--dataset-link", type=str, default="alexv26/GNNVulDatasets", help="Link to download dataset (default: alexv26/GNNVulDatasets)")
     parser.add_argument("--download-w2v", type=bool, default=False, help="Option to download w2v from Huggingface (default: False)") 
+    parser.add_argument("--w2v-link", type=str, default="alexv26/complete_dset_pretrained_w2v", help="Link to download dataset (default: alexv26/GNNVulDatasets)")
     parser.add_argument("--do-lr-scheduling", type=bool, default=True, help="Adjust learning rate after validation loss plateaus (default: True)")
     parser.add_argument("--vul-to-safe-ratio", type=int, default=3, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
     parser.add_argument("--generate-dataset-only", type=bool, default=False, help="Only generate dataset splits, do not run model (default: False)")
@@ -213,7 +214,6 @@ if __name__ == "__main__":
 
     if args.download_presplit_datasets and args.dataset_link is None:
         parser.error("--dataset-name is required when --download-presplit-datasets is set to True")
-
 
     # SAVE RUN HISTORY
     if not (os.path.exists("run_history")):
@@ -273,7 +273,7 @@ if __name__ == "__main__":
     if not os.path.exists(W2V_PATH):
         if args.download_w2v:
             print("Loading w2v from huggingface...")
-            load_w2v_from_huggingface()
+            load_w2v_from_huggingface(args.w2v_link)
             w2v = Word2Vec.load(W2V_PATH)
         else:
             print("Training new w2v model")
