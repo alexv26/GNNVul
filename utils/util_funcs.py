@@ -53,5 +53,5 @@ def early_stopping(best_f1, val_f1, patience=5, epochs_without_improvement=0):
         print(f"Epochs without improvement: {epochs_without_improvement}")
         if epochs_without_improvement >= patience:
             print("Early stopping...")
-            return True
+            return True, epochs_without_improvement
     return False, epochs_without_improvement
