@@ -85,10 +85,18 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
 
     return train_set, valid_set, test_set
 
-def load_huggingface_datasets():
-    # LOAD DATASET
+def remove_duplicates(data):
+    seen_entries = {}
+    ret = []
+    for i in range(len(data)):
+        idx = data[i]["idx"]
+        if idx not in seen_entries:
+            ret.append(data[i])
+            seen_entries[idx] = data[i]
+    return ret
 
-    repo_id = "alexv26/GNNVulDatasets"
+def load_huggingface_datasets(repo_id = "alexv26/GNNVulDatasets"):
+    # LOAD DATASET
     train_name = "train.json"
     test_name = "test.json"
     valid_name = "valid.json"

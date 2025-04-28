@@ -13,21 +13,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ###* GETTING DATA FROM TRAIN DATASET *###
 
 # assuming you run out of the data directory
-def train_w2v(path="./final_data/all_train_data_new.json", save_path=BASE_DIR):
-    data = []
-    try:
-        with open(path, 'r', encoding='utf-8') as file:
-            data = json.load(file)  # Load the existing array
-    except FileNotFoundError:
-        raise Exception("Unable to access dataset")
+def train_w2v(data, save_path=BASE_DIR):
 
     train = pd.DataFrame(data)
-
-    ###* SEE TRAIN DATA *###
-    #print(train)
-    print(train.loc[0])
-    #print(train.loc[0]["func"])
-
 
     ###* Tokenizing *###
     # Credit for the following code: https://www.analyticsvidhya.com/blog/2021/07/word2vec-for-word-embeddings-a-beginners-guide/
