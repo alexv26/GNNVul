@@ -9,6 +9,9 @@ from huggingface_hub import hf_hub_download
 from .graph_gen.graph_generator import generate_one_graph as gengraph
 from tqdm import tqdm
 import pickle
+from gensim.models import Word2Vec
+import torch
+import re
 
 # ChatGPT helped with some of the coding
 def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, upsample_vulnerable=False, downsample_safe=False, downsample_factor=2):
@@ -140,7 +143,6 @@ def print_split_stats(split_name, split_data):
     print(f"{split_name} — Total: {total}, Vulnerable: {vuln} ({vuln/total:.2%}), Non-vulnerable: {nonvuln} ({nonvuln/total:.2%})")
 
 def preprocess_graphs(train, test, valid):
-    #! NEW: DICT TO SAVE GRAPHS TO SAVE COMPUTER SPACE
     seen_graphs = {}
     complete_dataset = train + test + valid
     for i in tqdm(range(len(complete_dataset)), desc="Preprocessing graphs", unit="graph"):
@@ -150,11 +152,61 @@ def preprocess_graphs(train, test, valid):
             seen_graphs[idx] = G
     return seen_graphs
 
+def split_name_into_subtokens(name):
+    """
+    Splits identifiers like 'session_data' or 'getHTTPResponse' into subtokens.
+    """
+    # Split snake_case
+    parts = name.lower().split('_')
+    subtokens = []
+    for part in parts:
+        # Split camelCase and PascalCase
+        camel_split = re.findall(r'[a-z]+|[A-Z][a-z]*|[0-9]+', part)
+        subtokens.extend([s.lower() for s in camel_split if s])
+    return subtokens
+
+# ChatGPT
+def preprocess_node_embeddings(w2v, data):
+    save_path = "data/preprocessed_data/preprocessed_node_embeddings.json"
+
+    all_node_names = set()
+
+    for entry in data:
+        # function name
+        func_name = entry.get("func", "")
+        if func_name:
+            subtokens = split_name_into_subtokens(func_name)
+            all_node_names.update(subtokens)
+
+    print(f"Total unique node tokens to embed: {len(all_node_names)}")
+
+    # STEP 2: Precompute embeddings
+    node_embedding_lookup = {}
+
+    # Wrap tqdm around the loop
+    for node in tqdm(all_node_names, desc="Precomputing Node Embeddings", unit="token"):
+        if node in w2v.wv:
+            embedding = torch.tensor(w2v.wv[node])
+            node_embedding_lookup[node] = embedding.tolist()  # Save as list for JSON
+
+    # Ensure save directory exists
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    # Save to JSON
+    with open(save_path, 'w') as f:
+        json.dump(node_embedding_lookup, f)
+
+    print(f"✅ Saved {len(node_embedding_lookup)} embeddings to {save_path}")
+    
+    return node_embedding_lookup
+
 def save_seengraphs(seen_graphs: dict):
-    with open("data/graphs/seen_graphs.pkl", "wb") as f:
+    save_path = "data/preprocessed_data/seen_graphs.pkl"
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, "wb") as f:
         pickle.dump(seen_graphs, f)
 
 def load_seengraphs():
-    with open("data/graphs/seen_graphs.pkl", "rb") as f:
+    with open("data/preprocessed_data/seen_graphs.pkl", "rb") as f:
         seen_graphs = pickle.load(f)
     return seen_graphs

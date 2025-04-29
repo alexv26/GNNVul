@@ -14,7 +14,7 @@ import argparse
 from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
-from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs, remove_duplicates
+from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs, remove_duplicates, preprocess_node_embeddings
 from utils.util_funcs import load_configs, load_w2v_from_huggingface, early_stopping
 from utils.FocalLoss import FocalCrossEntropyLoss
 from utils.json_functions import load_json_array
@@ -210,6 +210,8 @@ if __name__ == "__main__":
     parser.add_argument("--load-existing-model", type=bool, default=False, help="Load pre-trained model (default: False)")
     parser.add_argument("--roc-implementation", type=bool, default=True, help="Does the model use ROC curve based decision boundary adjustments? (default: True)")
     parser.add_argument("--architecture-type", type=str, default="rgcn", help="Architecture type (default: rgcn)")
+    parser.add_argument("--save-memory", type=bool, default=False, help="Use less RAM by generating graphs every time instead of loading from seen_dict? (default: False)")
+   
     args = parser.parse_args()
 
     if args.download_presplit_datasets and args.dataset_link is None:
@@ -253,6 +255,7 @@ if __name__ == "__main__":
     train_array = load_json_array(args.train_dataset)
     test_array = load_json_array(args.test_dataset)
     valid_array = load_json_array(args.valid_dataset)
+    combined = remove_duplicates(train_array) + test_array + valid_array
     
     print_split_stats("Train", train_array)
     print_split_stats("Validation", valid_array)
@@ -260,14 +263,6 @@ if __name__ == "__main__":
 
     if args.generate_dataset_only:
         sys.exit()
-
-    if os.path.exists("data/graphs/seen_graphs.pkl"):
-        print("Loading seen graphs dict")
-        seen_graphs = load_seengraphs()
-    else:
-        # Preprocess graphs for speed later
-        seen_graphs = preprocess_graphs(train_array, test_array, valid_array)
-        save_seengraphs(seen_graphs)
 
     # LOAD or CREATE w2v
     if not os.path.exists(W2V_PATH):
@@ -277,15 +272,32 @@ if __name__ == "__main__":
             w2v = Word2Vec.load(W2V_PATH)
         else:
             print("Training new w2v model")
-            train_w2v(remove_duplicates(train_array) + test_array + valid_array)
+            train_w2v(combined)
             w2v = Word2Vec.load(W2V_PATH)
     else:
         print("Word2Vec exists. Loading pretrained model...")
         w2v = Word2Vec.load(W2V_PATH)
+
+    #* Preprocess graphs
+    if os.path.exists("data/preprocessed_data/seen_graphs.pkl"):
+        print("Loading seen graphs dict")
+        seen_graphs = load_seengraphs()
+    else:
+        # Preprocess graphs for speed later
+        seen_graphs = preprocess_graphs(train_array, test_array, valid_array)
+        save_seengraphs(seen_graphs)
+
+    #* Preprocess node embeddings
+    if os.path.exists("data/preprocessed_data/preprocessed_node_embeddings.json"):
+        print("Loading preprocessed node embeddings")
+        preprocessed_node_embeddings = load_json_array("data/preprocessed_data/preprocessed_node_embeddings.json")
+    else:
+        # Preprocess graphs for speed later
+        preprocessed_node_embeddings = preprocess_node_embeddings(w2v, combined)
     
-    train_dataset = GraphDataset(train_array, w2v, seen_graphs)
-    val_dataset = GraphDataset(valid_array, w2v, seen_graphs)
-    test_dataset = GraphDataset(test_array, w2v, seen_graphs)
+    train_dataset = GraphDataset(train_array, w2v, seen_graphs, args.save_memory, preprocessed_node_embeddings)
+    val_dataset = GraphDataset(valid_array, w2v, seen_graphs, args.save_memory, preprocessed_node_embeddings)
+    test_dataset = GraphDataset(test_array, w2v, seen_graphs, args.save_memory, preprocessed_node_embeddings)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)

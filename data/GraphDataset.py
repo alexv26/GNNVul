@@ -2,34 +2,23 @@ from torch.utils.data import Dataset
 from torch_geometric.data import Data
 import torch
 import os
-from gensim.models import Word2Vec
-import re
+
+from .data_processing import split_name_into_subtokens
 from .graph_gen.graph_generator import generate_one_graph as gengraph
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "../../data/final_data")
 W2V_PATH = os.path.join(BASE_DIR, "w2v/word2vec_code.model")
 
-def split_name_into_subtokens(name):
-    """
-    Splits identifiers like 'session_data' or 'getHTTPResponse' into subtokens.
-    """
-    # Split snake_case
-    parts = name.lower().split('_')
-    subtokens = []
-    for part in parts:
-        # Split camelCase and PascalCase
-        camel_split = re.findall(r'[a-z]+|[A-Z][a-z]*|[0-9]+', part)
-        subtokens.extend([s.lower() for s in camel_split if s])
-    return subtokens
-
 
 class GraphDataset(Dataset):
-    def __init__(self, data, w2v, seen_graphs):
+    def __init__(self, data, w2v, seen_graphs: dict, save_memory: bool, preprocessed_node_embeddings: dict):
         self.data = data
         self.w2v = w2v
         self.embedding_dim = self.w2v.vector_size
         self.seen_graphs = seen_graphs
+        self.save_memory = save_memory
+        self.preprocessed_node_embeddings = preprocessed_node_embeddings
 
     def __len__(self):
         return len(self.data)
@@ -52,7 +41,11 @@ class GraphDataset(Dataset):
 
         #* STEP 1: LOAD GRAPH FROM PREPROCESSED GRAPHS
         global_idx = self.data[idx]["idx"]  # Get the global unique ID
-        G = self.seen_graphs[global_idx]
+
+        if not self.save_memory:
+            G = self.seen_graphs[global_idx]
+        elif self.save_memory:
+            G = gengraph(self.data, idx, False)
 
         #* STEP TWO: CREATE GRAPH FEATURES
         # a: node feature matrix
@@ -68,15 +61,19 @@ class GraphDataset(Dataset):
             if node_type in node_types:
                 node_feature_matrix[index, node_types[node_type]] = 1.0
 
-            # Word2Vec embedding of node name subtokens
             subtokens = split_name_into_subtokens(str(node))
             embeddings = []
             for token in subtokens:
-                if token in self.w2v.wv:
-                    embeddings.append(torch.tensor(self.w2v.wv[token]))
+                if token in self.preprocessed_node_embeddings:
+                    embeddings.append(torch.tensor(self.preprocessed_node_embeddings[token]))
+
             if embeddings:
                 mean_embedding = torch.mean(torch.stack(embeddings), dim=0)
                 node_feature_matrix[index, len(node_types):] = mean_embedding
+            else:
+                # Optionally: leave it as zeros if not found
+                pass
+
 
         
         # b: edge index and edge type
