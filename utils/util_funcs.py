@@ -55,3 +55,26 @@ def early_stopping(best_f1, val_f1, patience=5, epochs_without_improvement=0):
             print("Early stopping...")
             return True, epochs_without_improvement
     return False, epochs_without_improvement
+
+
+from tqdm import tqdm
+
+def analyze_word2vec_coverage(dataset, w2v, embedding_dim):
+    total_nodes = 0
+    matched_nodes = 0
+    unmatched_tokens = {}
+
+    for i in tqdm(range(len(dataset)), desc="Analyzing W2V Coverage"):
+        data = dataset[i]  # This calls __getitem__
+        x = data.x  # shape: [num_nodes, total_dim]
+        num_nodes = x.size(0)
+        total_nodes += num_nodes
+
+        # Check which rows are zero vectors in embedding portion
+        # node_types = 7 → embeddings start at index 7
+        for row in x[:, 7:]:
+            if row.abs().sum() > 1e-6:  # non-zero embedding
+                matched_nodes += 1
+
+    print(f"📊 Word2Vec coverage: {matched_nodes}/{total_nodes} "
+          f"({100 * matched_nodes / total_nodes:.2f}%)")

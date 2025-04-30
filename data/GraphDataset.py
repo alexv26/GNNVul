@@ -12,13 +12,13 @@ W2V_PATH = os.path.join(BASE_DIR, "w2v/word2vec_code.model")
 
 
 class GraphDataset(Dataset):
-    def __init__(self, data, w2v, seen_graphs: dict, save_memory: bool, preprocessed_node_embeddings: dict):
+    def __init__(self, data, w2v, seen_graphs: dict, save_memory: bool):
         self.data = data
         self.w2v = w2v
         self.embedding_dim = self.w2v.vector_size
         self.seen_graphs = seen_graphs
         self.save_memory = save_memory
-        self.preprocessed_node_embeddings = preprocessed_node_embeddings
+        self.skipped_embeddings = 0
 
     def __len__(self):
         return len(self.data)
@@ -37,6 +37,9 @@ class GraphDataset(Dataset):
     def get_data(self):
         return self.data
     
+    def get_skipped_embeddings_count(self):
+        return self.skipped_embeddings
+    
     def __getitem__(self, idx):
 
         #* STEP 1: LOAD GRAPH FROM PREPROCESSED GRAPHS
@@ -50,10 +53,11 @@ class GraphDataset(Dataset):
         #* STEP TWO: CREATE GRAPH FEATURES
         # a: node feature matrix
         node_types = {'FunctionCall': 0, 'Variable': 1, 'ControlStructure_if': 2, 'ControlStructure_while': 3, 'ControlStructure_switch': 4, 'ControlStructure_for': 5, 'FunctionDefinition': 6}
-        
+ 
         node_feature_matrix = torch.zeros((G.number_of_nodes(), len(node_types) + self.embedding_dim))
         node_to_idx = {}
         for index, (node, attrs) in enumerate(G.nodes(data=True)):
+
             node_to_idx[node] = index
 
             # One-hot type
@@ -61,18 +65,21 @@ class GraphDataset(Dataset):
             if node_type in node_types:
                 node_feature_matrix[index, node_types[node_type]] = 1.0
 
+            # Word2Vec embedding of node name subtokens
             subtokens = split_name_into_subtokens(str(node))
             embeddings = []
-            for token in subtokens:
-                if token in self.preprocessed_node_embeddings:
-                    embeddings.append(torch.tensor(self.preprocessed_node_embeddings[token]))
 
+            for token in subtokens:
+                token = token.lower()
+                if token in self.w2v.wv:
+                    embeddings.append(torch.tensor(self.w2v.wv[token]))
             if embeddings:
                 mean_embedding = torch.mean(torch.stack(embeddings), dim=0)
-                node_feature_matrix[index, len(node_types):] = mean_embedding
             else:
-                # Optionally: leave it as zeros if not found
-                pass
+                # Use zero vector for unseen tokens
+                mean_embedding = torch.zeros(self.embedding_dim)
+                self.skipped_embeddings += 1
+            node_feature_matrix[index, len(node_types):] = mean_embedding
 
 
         

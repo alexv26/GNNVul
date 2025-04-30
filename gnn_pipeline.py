@@ -14,11 +14,12 @@ import argparse
 from data.w2v.train_word2vec import train_w2v
 from gensim.models import Word2Vec
 import numpy as np
-from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs, remove_duplicates, preprocess_node_embeddings
-from utils.util_funcs import load_configs, load_w2v_from_huggingface, early_stopping
+from data.data_processing import subsample_and_split, print_split_stats, load_huggingface_datasets, preprocess_graphs, load_seengraphs, save_seengraphs, remove_duplicates
+from utils.util_funcs import load_configs, load_w2v_from_huggingface, early_stopping, analyze_word2vec_coverage
 from utils.FocalLoss import FocalCrossEntropyLoss
 from utils.json_functions import load_json_array
 import shutil
+from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 W2V_PATH = os.path.join(BASE_DIR, "data/w2v/word2vec_code.model")
@@ -225,16 +226,16 @@ if __name__ == "__main__":
         return sum(1 for item in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, item))) if os.path.isdir(folder_path) else None
 
     num_folders = count_folders("run_history")
-    run_history_save_path = f"run_history/run{num_folders+1}" 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_history_save_path = f"run_history/run_{timestamp}" 
     os.mkdir(run_history_save_path)
-
     # Save copy of configs to run_history_save_path
-    shutil.copy2("configs.json", f"{run_history_save_path}/run{num_folders+1}_configs.json")
+    shutil.copy2("configs.json", f"{run_history_save_path}/run_{timestamp}_configs.json")
 
     visualizations_save_path = f"{run_history_save_path}/visualizations"
     os.mkdir(visualizations_save_path)
 
-    losses_file_path = f"run_history/run_{num_folders + 1}_losses.json"
+    losses_file_path = f"run_history/run_{timestamp}_losses.json"
     model_save_path = f"{run_history_save_path}/saved_model.pth"
 
     '''
@@ -287,17 +288,17 @@ if __name__ == "__main__":
         seen_graphs = preprocess_graphs(train_array, test_array, valid_array)
         save_seengraphs(seen_graphs)
 
-    #* Preprocess node embeddings
+    '''#* Preprocess node embeddings
     if os.path.exists("data/preprocessed_data/preprocessed_node_embeddings.json"):
         print("Loading preprocessed node embeddings")
         preprocessed_node_embeddings = load_json_array("data/preprocessed_data/preprocessed_node_embeddings.json")
     else:
         # Preprocess graphs for speed later
-        preprocessed_node_embeddings = preprocess_node_embeddings(w2v, combined)
+        preprocessed_node_embeddings = preprocess_node_embeddings(w2v, combined)'''
     
-    train_dataset = GraphDataset(train_array, w2v, seen_graphs, args.save_memory, preprocessed_node_embeddings)
-    val_dataset = GraphDataset(valid_array, w2v, seen_graphs, args.save_memory, preprocessed_node_embeddings)
-    test_dataset = GraphDataset(test_array, w2v, seen_graphs, args.save_memory, preprocessed_node_embeddings)
+    train_dataset = GraphDataset(train_array, w2v, seen_graphs, args.save_memory)
+    val_dataset = GraphDataset(valid_array, w2v, seen_graphs, args.save_memory)
+    test_dataset = GraphDataset(test_array, w2v, seen_graphs, args.save_memory)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -329,7 +330,8 @@ if __name__ == "__main__":
         
         criterion = FocalCrossEntropyLoss()
 
-        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json")    
+        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json") 
+        print(train_dataset.get_skipped_embeddings_count())
     else:
         print("Loading existing model")
         model.load_state_dict(torch.load(model_save_path))

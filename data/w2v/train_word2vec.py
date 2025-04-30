@@ -7,6 +7,8 @@ nltk.download('punkt_tab') # as per https://www.nltk.org/install.html
 from multiprocessing import cpu_count
 import os
 import swifter
+from data.data_processing import split_name_into_subtokens
+import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -19,9 +21,6 @@ def train_w2v(data, save_path=BASE_DIR):
 
     ###* Tokenizing *###
     # Credit for the following code: https://www.analyticsvidhya.com/blog/2021/07/word2vec-for-word-embeddings-a-beginners-guide/
-
-    def tokenize_function_text(func_text):
-        return [[word.lower() for word in word_tokenize(sentence)] for sentence in sent_tokenize(func_text)]
 
     # Apply function in parallel using swifter
     # Flatten sentences into a single list per function
