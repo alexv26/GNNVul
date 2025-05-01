@@ -154,51 +154,16 @@ def preprocess_graphs(train, test, valid):
 
 def split_name_into_subtokens(name):
     """
-    Splits identifiers like 'session_data' or 'getHTTPResponse' into subtokens.
+    Splits identifiers like 'session_data' or 'getHTTPResponse2' into subtokens.
     """
-    # Split snake_case
-    parts = name.lower().split('_')
+    # First split snake_case
+    parts = re.split(r'[_\-\s]', name)
     subtokens = []
     for part in parts:
-        # Split camelCase and PascalCase
-        camel_split = re.findall(r'[a-z]+|[A-Z][a-z]*|[0-9]+', part)
-        subtokens.extend([s.lower() for s in camel_split if s])
+        # Then split camelCase, PascalCase, and words with digits
+        camel_parts = re.findall(r'[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|\d+|[A-Z]+', part)
+        subtokens.extend([s.lower() for s in camel_parts if s])
     return subtokens
-
-# ChatGPT
-def preprocess_node_embeddings(w2v, data):
-    save_path = "data/preprocessed_data/preprocessed_node_embeddings.json"
-
-    all_node_names = set()
-
-    for entry in data:
-        # function name
-        func_name = entry.get("func", "")
-        if func_name:
-            subtokens = split_name_into_subtokens(func_name)
-            all_node_names.update(subtokens)
-
-    print(f"Total unique node tokens to embed: {len(all_node_names)}")
-
-    # STEP 2: Precompute embeddings
-    node_embedding_lookup = {}
-
-    # Wrap tqdm around the loop
-    for node in tqdm(all_node_names, desc="Precomputing Node Embeddings", unit="token"):
-        if node in w2v.wv:
-            embedding = torch.tensor(w2v.wv[node])
-            node_embedding_lookup[node] = embedding.tolist()  # Save as list for JSON
-
-    # Ensure save directory exists
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-    # Save to JSON
-    with open(save_path, 'w') as f:
-        json.dump(node_embedding_lookup, f)
-
-    print(f"✅ Saved {len(node_embedding_lookup)} embeddings to {save_path}")
-    
-    return node_embedding_lookup
 
 def save_seengraphs(seen_graphs: dict):
     save_path = "data/preprocessed_data/seen_graphs.pkl"

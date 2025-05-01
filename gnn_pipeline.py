@@ -317,7 +317,7 @@ if __name__ == "__main__":
 
     #* STEP 2: TRAIN MODEL
     if not args.load_existing_model:
-        # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE #! STREAMLINE LATER, CHANGED!!!!
+        # SETTING WEIGHTS TO FIX VULN/NONVULN INBALANCE
         vuln, nonvuln = train_dataset.get_vuln_nonvuln_split()
         print(vuln, nonvuln)
         total = vuln + nonvuln
