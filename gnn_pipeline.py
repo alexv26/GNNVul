@@ -278,8 +278,6 @@ if __name__ == "__main__":
     val_dataset = GraphDataset(valid_array, w2v, seen_graphs, args.save_memory)
     test_dataset = GraphDataset(test_array, w2v, seen_graphs, args.save_memory)
 
-    from explain_graph_ig import explain_single_graph
-
 
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
