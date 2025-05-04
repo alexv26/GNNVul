@@ -8,7 +8,7 @@ from data.GraphDataset import GraphDataset
 from model import GNNModel
 from tqdm import tqdm
 import json
-from data.graph_gen.data_visualization import plot_loss, plot_confusion_matrix, plot_training_history, plot_roc_curve
+from data.data_visualization import plot_confusion_matrix, plot_training_history, plot_roc_curve
 from sklearn.metrics import classification_report, roc_curve
 import argparse
 from data.w2v.train_word2vec import train_w2v
@@ -131,12 +131,10 @@ def train(model, train_loader, val_loader, optimizer, model_save_path, criterion
     with open(losses_file_path, 'w') as f:
         json.dump(losses, f, indent=2)
 
-    with open("training_history.json", "w") as f:
+    with open(f"{run_history_save_path}/training_history.json", "w") as f:
         json.dump(history, f, indent=2)
 
     print("✅ Training history saved to training_history.json")
-    ##! END NEW
-    plot_loss(losses)
 
 
     with open(losses_file_path, 'w') as f:
@@ -206,7 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--download-w2v", type=bool, default=False, help="Option to download w2v from Huggingface (default: False)") 
     parser.add_argument("--w2v-link", type=str, default="alexv26/complete_dset_pretrained_w2v", help="Link to download dataset (default: alexv26/GNNVulDatasets)")
     parser.add_argument("--do-lr-scheduling", type=bool, default=True, help="Adjust learning rate after validation loss plateaus (default: True)")
-    parser.add_argument("--vul-to-safe-ratio", type=int, default=3, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
+    parser.add_argument("--vul-to-safe-ratio", type=int, default=None, help="Ratio between vulnerable to safe code: 1:n vul/safe (default: 3)")
     parser.add_argument("--generate-dataset-only", type=bool, default=False, help="Only generate dataset splits, do not run model (default: False)")
     parser.add_argument("--load-existing-model", type=bool, default=False, help="Load pre-trained model (default: False)")
     parser.add_argument("--roc-implementation", type=bool, default=True, help="Does the model use ROC curve based decision boundary adjustments? (default: True)")
@@ -217,26 +215,6 @@ if __name__ == "__main__":
 
     if args.download_presplit_datasets and args.dataset_link is None:
         parser.error("--dataset-name is required when --download-presplit-datasets is set to True")
-
-    # SAVE RUN HISTORY
-    if not (os.path.exists("run_history")):
-        os.mkdir("run_history")
-    
-    def count_folders(folder_path):
-        return sum(1 for item in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, item))) if os.path.isdir(folder_path) else None
-
-    num_folders = count_folders("run_history")
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    run_history_save_path = f"run_history/run_{timestamp}" 
-    os.mkdir(run_history_save_path)
-    # Save copy of configs to run_history_save_path
-    shutil.copy2("configs.json", f"{run_history_save_path}/run_{timestamp}_configs.json")
-
-    visualizations_save_path = f"{run_history_save_path}/visualizations"
-    os.mkdir(visualizations_save_path)
-
-    losses_file_path = f"run_history/run_{timestamp}_losses.json"
-    model_save_path = f"{run_history_save_path}/saved_model.pth"
 
     '''
     The code below basically handles whether you need to do pre-splitting of data or not. If we do, we a pre-split of the data
@@ -300,6 +278,10 @@ if __name__ == "__main__":
     val_dataset = GraphDataset(valid_array, w2v, seen_graphs, args.save_memory)
     test_dataset = GraphDataset(test_array, w2v, seen_graphs, args.save_memory)
 
+    from explain_graph_ig import explain_single_graph
+
+
+
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
@@ -314,6 +296,25 @@ if __name__ == "__main__":
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.1)
     else:
         scheduler = None
+    
+        # SAVE RUN HISTORY
+    if not (os.path.exists("run_history")):
+        os.mkdir("run_history")
+
+    
+    # ==== SAVE RUN HISTORY ==== #
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_history_save_path = f"run_history/run_{timestamp}" 
+    os.mkdir(run_history_save_path)
+    # Save copy of configs to run_history_save_path
+    shutil.copy2("configs.json", f"{run_history_save_path}/run_{timestamp}_configs.json")
+
+    visualizations_save_path = f"{run_history_save_path}/visualizations"
+    os.mkdir(visualizations_save_path)
+
+    losses_file_path = f"run_history/run_{timestamp}_losses.json"
+    model_save_path = f"{run_history_save_path}/saved_model.pth"
 
     #* STEP 2: TRAIN MODEL
     if not args.load_existing_model:
@@ -330,7 +331,7 @@ if __name__ == "__main__":
         
         criterion = FocalCrossEntropyLoss()
 
-        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path="training_losses_GAT.json") 
+        train(model, train_loader, val_loader, optimizer, model_save_path=model_save_path, criterion=criterion, device=device, roc_implementation=args.roc_implementation, losses_file_path=f"{run_history_save_path}/training_losses.json") 
         print(train_dataset.get_skipped_embeddings_count())
     else:
         print("Loading existing model")
@@ -382,8 +383,8 @@ if __name__ == "__main__":
         }
     }
 
-    with open("predictions_and_labels.json", "w") as f:
+    with open(f"{run_history_save_path}/predictions_and_labels.json", "w") as f:
         json.dump(results, f, indent=2)
 
     print("Saved predictions and labels to predictions_and_labels.json")
-    plot_training_history(history_file_path="training_history.json", save_dir=visualizations_save_path)
+    plot_training_history(history_file_path=f"{run_history_save_path}/training_history.json", save_dir=f"{run_history_save_path}/visualizations")

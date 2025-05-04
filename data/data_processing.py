@@ -32,7 +32,6 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
         os.mkdir(output_dir)
 
 
-    # https://www.youtube.com/watch?v=aboZctrHfK8
     indices = list(range(len(data)))
     labels = [item['target'] for item in data]
 
@@ -54,15 +53,37 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
     print(f"Before split | Train: {len(train_set)}, {(num_vuln_in_train / len(train_set) * 100):.2f}% Vulnerable, Valid: {len(valid_set)}, {(num_vuln_in_test / len(train_set) * 100):.2f}% Vulnerable, Test: {len(test_set)}, {(num_vuln_in_valid / len(train_set) * 100):.2f}% Vulnerable")
 
     if downsample_safe:
+        # TRAIN SET
         safe = [item for item in train_set if item[target_key] == 0]
         vuln = [item for item in train_set if item[target_key] == 1]
-        random.seed(42)
-        safe = random.sample(safe, len(safe)//downsample_factor)
+        random.seed(42) # https://www.youtube.com/watch?v=aboZctrHfK8
+        # if downsampling until theres a certain ratio between safe/vuln
+        num_safe_samples = int(safe_ratio * len(vuln))
+        num_safe_samples = min(num_safe_samples, len(safe))
+        # Downsample the safe set
+        safe = random.sample(safe, num_safe_samples)
         train_set = vuln + safe
         random.shuffle(train_set)
-        print(f"After downsampling: {len(train_set)}")
-    
+
+        # Test / valid sets
+        safe_test = [item for item in test_set if item[target_key] == 0]
+        vuln_test = [item for item in test_set if item[target_key] == 1]
+        safe_test = random.sample(safe_test, len(safe_test)//downsample_factor)
+        test_set = safe_test + vuln_test
+
+        safe_valid = [item for item in valid_set if item[target_key] == 0]
+        vuln_valid = [item for item in valid_set if item[target_key] == 1]
+        safe_valid = random.sample(safe_valid, len(safe_valid)//downsample_factor)
+        valid_set = safe_valid + vuln_valid
+
     if upsample_vulnerable:
+        safe = [item for item in train_set if item[target_key] == 0]
+        vuln = [item for item in train_set if item[target_key] == 1]
+        # if only downsampling a certain percent of safe entries
+        if downsample_factor:
+            safe = random.sample(safe, len(safe)//downsample_factor)
+            train_set = vuln + safe
+            random.shuffle(train_set)
         X = [[i] for i in range(len(train_set))]  # Just index, required 2D shape
         y = [item[target_key] for item in train_set]
 
@@ -84,7 +105,18 @@ def subsample_and_split(data, output_dir, target_key="target", safe_ratio=3, ups
     save(valid_set, "valid")
     save(test_set, "test")
 
-    print(f"Saved: {len(train_set)} train, {len(valid_set)} valid, {len(test_set)} test")
+    # Check for duplicates
+    train_funcs = set(item["func"] for item in train_set)
+    test_funcs = set(item["func"] for item in test_set)
+    valid_funcs = set(item["func"] for item in valid_set)
+
+    duplicates_between_train_and_test = len(train_funcs & test_funcs)
+    duplicates_between_train_and_valid = len(train_funcs & valid_funcs)
+    duplicates_between_test_and_valid = len(test_funcs & valid_funcs)
+
+    print(f"Duplicates between train and test: {duplicates_between_train_and_test}")
+    print(f"Duplicates between train and valid: {duplicates_between_train_and_valid}")
+    print(f"Duplicates between test and valid: {duplicates_between_test_and_valid}")
 
     return train_set, valid_set, test_set
 

@@ -3,10 +3,10 @@
     "hidden_dim": 200,
     "output_dim": 2,
     "dropout": 0.3,
-    "l2_reg": 1e-5,
+    "l2_reg": 1e-4,
     "batch_size": 128,
     "learning_rate": 0.001,
-    "epochs": 100,
-    "downsample_factor": 2,
+    "epochs": 50,
+    "downsample_factor": 5,
     "patience": 1000
 }
