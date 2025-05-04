@@ -2,9 +2,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import networkx as nx
 from torch_geometric.data import Data, DataLoader
-from torch_geometric.nn import GCNConv, GATConv, RGCNConv, global_mean_pool, global_add_pool
+from torch_geometric.nn import GCNConv, GATConv, RGCNConv, global_mean_pool, GatedGraphConv
 from sklearn.model_selection import train_test_split
 import torch
+
 
 class GNNModel(nn.Module):
     def __init__(self, input_dim, hidden_dim=64, output_dim=2, dropout=0.5, model="gcn"):
@@ -24,20 +25,8 @@ class GNNModel(nn.Module):
             self.conv1 = RGCNConv(input_dim, hidden_dim, num_relations=6)
             self.conv2 = RGCNConv(hidden_dim, hidden_dim, num_relations=6)
             self.conv3 = RGCNConv(hidden_dim, hidden_dim, num_relations=6)
-        else: # GAT
-            self.conv1 = GATConv(input_dim, hidden_dim, heads=8, dropout=dropout)
-            hidden_dim = hidden_dim * 8  # GAT concatenates heads by default
-            self.conv2 = GATConv(hidden_dim, hidden_dim, heads=1, dropout=dropout)
-        # Output layer
-        self.mlp = nn.Sequential(
-            nn.Linear(hidden_dim + 5, hidden_dim), # +5 for vulnerability flags
-            nn.ReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(hidden_dim, output_dim)  # keep 1 for BCE or 2 for CrossEntropy
-        )
-
-        self.dropout = dropout
-        self.model = model.lower()
+        elif model.lower() == "hybrid":
+            pass
 
     def forward(self, data: Data):
         if self.model != "rgcn":
@@ -58,11 +47,11 @@ class GNNModel(nn.Module):
             
             # Global pooling
             #x = global_mean_pool(x, batch)
-            x = global_add_pool(x, batch)
+            x = global_mean_pool(x, batch)
             
             # Output layer
             x = self.mlp(x)
-        else: # RGCN
+        elif self.model == "rgcn": # RGCN
             x, edge_index, edge_type, batch = data.x, data.edge_index, data.edge_attr, data.batch
 
             x = self.conv1(x, edge_index, edge_type)
@@ -73,7 +62,7 @@ class GNNModel(nn.Module):
             x = F.relu(x)
 
             #x = global_mean_pool(x, batch)
-            x = global_add_pool(x, batch)
+            x = global_mean_pool(x, batch)
 
              # Retrieve and stack graph-level flags
             flags = torch.stack([g.graph_flags for g in data.to_data_list()]).to(x.device)
@@ -81,5 +70,7 @@ class GNNModel(nn.Module):
 
             
             x = self.mlp(x)
+        elif self.model == "hybrid":
+            pass
         
         return x # Shape: [batch_size, 2]
