@@ -29,7 +29,7 @@ class GNNModel(nn.Module):
             pass
 
     def forward(self, data: Data):
-        if self.model != "rgcn":
+        if self.model == "gcn":
             x, edge_index, batch = data.x, data.edge_index, data.batch
 
             # First layer
